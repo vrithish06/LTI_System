@@ -134,7 +134,7 @@ router.get('/exam/:title', async (req: Request, res: Response): Promise<void> =>
 router.get('/bp/:courseId', async (req: Request, res: Response): Promise<void> => {
     const { courseId } = req.params;
     try {
-        const records = await BrowniePointModel.find({ courseId }).sort({ studentName: 1 });
+        const records = await BrowniePointModel.find({ courseId }).sort({ studentName: 1 });//here 1 means sort in ascending order if -1 then sort in descending order
         res.json({ success: true, data: records });
     } catch (err: any) {
         res.status(500).json({ error: 'Failed to fetch brownie points', detail: err.message });
@@ -216,7 +216,7 @@ router.get('/health', (_req: Request, res: Response): void => {
 async function syncRosterForCourse(courseId: string): Promise<{ synced: number; courseName: string }> {
     const VIBE_BASE_URL = process.env.VIBE_BASE_URL || 'http://localhost:3141';
     const LTI_SHARED_SECRET = process.env.LTI_SHARED_SECRET || 'vibe-lti-shared-secret-change-in-production';
-    
+
     // Quick ping to check controller health
     try {
         const pingUrl = `${VIBE_BASE_URL}/api/lti/ping`;
