@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import QuizBuilder from './QuizBuilder';
 import QuizPlayer from './QuizPlayer';
+import BrowniePointsDashboard from './pages/BrowniePointsDashboard';
 
 export interface LtiContext {
   userId: string;
@@ -18,19 +19,19 @@ export interface LtiContext {
   deepLinkReturnUrl?: string;
 }
 
-type AppState = 'loading' | 'ready' | 'submitting' | 'success' | 'error';
+type AppState = 'loading' | 'ready' | 'success' | 'error';
 
 export default function App() {
   const [state, setState] = useState<AppState>('loading');
   const [context, setContext] = useState<LtiContext | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
-  const [score, setScore] = useState<number>(10);
   const [hpAwarded, setHpAwarded] = useState<number>(0);
-  const SCORE_MAX = 10;
 
-  // 1. On mount: read the JWT token from the URL and validate it with our backend
+  // Detect launch mode from URL params
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get('mode'); // 'bp_dashboard' for teacher BP management
+
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
     const token = params.get('lti_token');
 
     if (!token) {
@@ -51,31 +52,7 @@ export default function App() {
       });
   }, []);
 
-  // 2. Submit score back to Vibe
-  const handleSubmit = async () => {
-    if (!context) return;
-    setState('submitting');
-
-    try {
-      const res = await axios.post('/api/submit', {
-        context,
-        scoreGiven: score,
-        scoreMaximum: SCORE_MAX,
-        comment: `Completed via lTI_System external tool`,
-      });
-
-      const hp = Math.round((score / SCORE_MAX) * 100);
-      setHpAwarded(hp);
-      setState('success');
-    } catch (err: any) {
-      setErrorMsg(err?.response?.data?.error || 'Submission failed.');
-      setState('error');
-    }
-  };
-
-  const estimatedHP = Math.round((score / SCORE_MAX) * 100);
-  const initials = context?.userName?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || 'ST';
-
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (state === 'loading') {
     return (
       <div className="app-wrapper">
@@ -87,6 +64,7 @@ export default function App() {
     );
   }
 
+  // ── Error ──────────────────────────────────────────────────────────────────
   if (state === 'error') {
     return (
       <div className="app-wrapper">
@@ -99,56 +77,65 @@ export default function App() {
     );
   }
 
+  // ── Quiz submitted successfully ────────────────────────────────────────────
   if (state === 'success') {
     return (
       <div className="app-wrapper">
         <div className="success-state">
           <div className="success-icon">🎉</div>
           <h2>Activity Completed!</h2>
-          <p>Your score has been sent to Vibe LMS and your Health Points have been updated.</p>
-          <div className="hp-awarded-badge">
-            ⚡ +{hpAwarded} HP Awarded
-          </div>
+          <p>Your score has been sent to Vibe LMS and your Brownie Points have been updated.</p>
+          <div className="hp-awarded-badge">🍪 +{hpAwarded} BP Awarded</div>
         </div>
       </div>
     );
   }
 
+  // ── Brownie Points Dashboard (Instructor mode) ─────────────────────────────
+  if (mode === 'bp_dashboard' && context?.role === 'Instructor') {
+    return <BrowniePointsDashboard context={context} />;
+  }
+
+  // ── Deep-linking (Quiz Builder for teacher) ────────────────────────────────
+  if (context?.isDeepLinking) {
+    return (
+      <div className="app-wrapper">
+        <div className="tool-page">
+          <div className="tool-header">
+            <div className="header-left">
+              <div className="lti-badge">LTI Tool</div>
+              <h1 style={{ color: 'var(--text-primary)' }}>Create Activity</h1>
+            </div>
+          </div>
+          <QuizBuilder context={context} />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Student Quiz Player ───────────────────────────────────────────────────
   return (
     <div className="app-wrapper">
       <div className="tool-page">
-
-        {/* Header */}
         <div className="tool-header">
           <div className="header-left">
             <div className="lti-badge">LTI Tool</div>
-            <h1 style={{ color: 'var(--text-primary)' }}>External Activity</h1>
+            <h1 style={{ color: 'var(--text-primary)' }}>{context?.activityTitle || 'Activity'}</h1>
           </div>
         </div>
-
-
-
-
-        {/* Deep Linking Teacher View */}
-        {context?.isDeepLinking && (
-          <QuizBuilder context={context} />
-        )}
-
-        {/* Activity / Score Input (Quiz Player) */}
-        {context && !context.isDeepLinking && (
-          <QuizPlayer 
-             context={context} 
-             onSuccess={(hp) => {
-               setHpAwarded(hp);
-               setState('success');
-             }} 
-             onError={(msg) => {
-               setErrorMsg(msg);
-               setState('error');
-             }} 
+        {context && (
+          <QuizPlayer
+            context={context}
+            onSuccess={(hp) => {
+              setHpAwarded(hp);
+              setState('success');
+            }}
+            onError={(msg) => {
+              setErrorMsg(msg);
+              setState('error');
+            }}
           />
         )}
-
       </div>
     </div>
   );

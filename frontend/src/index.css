@@ -580,3 +580,12 @@ textarea.vibe-input {
   border: 1px dashed var(--border-light);
   color: #6b7280;
 }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
