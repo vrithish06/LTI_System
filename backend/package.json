@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "description": "LTI Tool Provider for Vibe LMS",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "build/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node build/index.js"
   },
   "dependencies": {
     "axios": "^1.6.0",

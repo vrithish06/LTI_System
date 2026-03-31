@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { LtiContext } from '../App';
+import '../index.css';
 
 interface BpRecord {
   _id: string;
@@ -96,181 +97,136 @@ export default function BrowniePointsDashboard({ context }: Props) {
   const topStudent = records.length ? [...records].sort((a, b) => b.points - a.points)[0] : null;
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '0' }}>
-
-      {/* Toast */}
+    <div className="bp-dashboard-wrapper">
+      {/* Toast Notification */}
       {toast && (
-        <div style={{
-          position: 'fixed', top: '20px', right: '20px', zIndex: 9999,
-          background: toast.type === 'success' ? '#10b981' : '#ef4444',
-          color: '#fff', padding: '12px 20px', borderRadius: '10px',
-          fontWeight: 600, fontSize: '0.9rem', boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-          animation: 'fadeIn 0.3s ease',
-        }}>
-          {toast.type === 'success' ? '✅' : '❌'} {toast.msg}
+        <div className={`toast-notification ${toast.type}`}>
+          {toast.msg}
         </div>
       )}
 
-      {/* Header */}
-      <div style={{
-        background: '#fff', borderBottom: '1px solid var(--border)',
-        padding: '20px 32px', display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: 44, height: 44, borderRadius: 12,
-            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '1.4rem', flexShrink: 0,
-          }}>🍪</div>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-              Brownie Points
-            </h1>
-            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Course&nbsp;<span style={{ color: 'var(--accent-purple)', fontWeight: 700 }}>{courseName || 'Loading...'}</span>
-            </p>
+      {/* Dynamic Header */}
+      <header className="bp-header">
+        <div className="header-content">
+          <div className="header-text">
+            <h1>Brownie Points Dashboard</h1>
+            <p>Course <span>{courseName || 'Loading...'}</span></p>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 24px' }}>
-
-        {/* Stats Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 28 }}>
-          {[
-            { label: 'Total Students', value: records.length, icon: '👥', color: '#6366f1' },
-            { label: 'Class Average', value: `${avgPoints} BP`, icon: '📊', color: '#10b981' },
-            { label: 'Top Earner', value: topStudent ? `${topStudent.points} BP` : '—', icon: '🏆', color: '#f59e0b' },
-          ].map(stat => (
-            <div key={stat.label} style={{
-              background: '#fff', borderRadius: 14, padding: '20px 24px',
-              border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 16,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-            }}>
-              <div style={{ fontSize: '1.8rem' }}>{stat.icon}</div>
-              <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{stat.label}</div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: stat.color }}>{stat.value}</div>
-              </div>
+      <main className="bp-main-container">
+        
+        {/* Statistics Widgets */}
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-icon icon-purple">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </div>
-          ))}
+            <div className="stat-info">
+              <span className="stat-label">Total Students</span>
+              <span className="stat-value text-purple">{records.length}</span>
+            </div>
+          </div>
+          
+          <div className="stat-card">
+            <div className="stat-icon icon-green">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20V10"/><path d="M18 20v-4"/><path d="M6 20v-6"/></svg>
+            </div>
+            <div className="stat-info">
+              <span className="stat-label">Class Average</span>
+              <span className="stat-value text-green">{avgPoints} BP</span>
+            </div>
+          </div>
+          
+          <div className="stat-card">
+            <div className="stat-icon icon-orange">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+            </div>
+            <div className="stat-info">
+              <span className="stat-label">Top Earner</span>
+              <span className="stat-value text-orange">{topStudent ? `${topStudent.points} BP` : '—'}</span>
+            </div>
+          </div>
         </div>
 
-        {/* Search */}
-        <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
+        {/* Search Bar */}
+        <div className="search-container">
+          <span className="search-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          </span>
           <input
             type="text"
-            placeholder="🔍  Search students by name or email..."
+            className="search-input"
+            placeholder="Search students by name or email..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            style={{
-              flex: 1, padding: '11px 16px', borderRadius: 10,
-              border: '1.5px solid var(--border)', background: '#fff',
-              fontSize: '0.95rem', color: 'var(--text-primary)', outline: 'none',
-            }}
           />
         </div>
 
-        {/* Table */}
-        <div style={{
-          background: '#fff', borderRadius: 16, border: '1px solid var(--border)',
-          overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
-        }}>
+        {/* Students Data Table */}
+        <div className="table-container">
           {loading ? (
-            <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <div className="spinner" style={{ margin: '0 auto 16px' }} />
-              Loading students...
+            <div className="table-empty-state">
+              <div className="spinner"></div>
+              <p>Fetching the latest roster...</p>
             </div>
           ) : filtered.length === 0 ? (
-            <div style={{ padding: '60px', textAlign: 'center' }}>
-              <div style={{ fontSize: '3rem', marginBottom: 12 }}>🍪</div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '1.05rem' }}>
-                {records.length === 0
-                  ? 'No students found in the roster.'
-                  : 'No students match your search.'}
-              </p>
+            <div className="table-empty-state">
+              <p>{records.length === 0 ? 'No students found in the roster.' : 'No students match your search.'}</p>
             </div>
+
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table className="bp-table">
               <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--border)' }}>
-                  {['Student', 'Email', 'Brownie Points', 'Last Updated', 'Actions'].map(h => (
-                    <th key={h} style={{
-                      padding: '14px 20px', textAlign: 'left',
-                      fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)',
-                      textTransform: 'uppercase', letterSpacing: '0.06em',
-                    }}>{h}</th>
-                  ))}
+                <tr>
+                  <th>Student</th>
+                  <th>Email</th>
+                  <th>Brownie Points</th>
+                  <th>Last Updated</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((rec, i) => (
-                  <tr key={rec._id} style={{
-                    borderBottom: i < filtered.length - 1 ? '1px solid var(--border-light)' : 'none',
-                    transition: 'background 0.15s',
-                  }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    {/* Avatar + Name */}
-                    <td style={{ padding: '16px 20px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{
-                          width: 38, height: 38, borderRadius: '50%',
-                          background: `hsl(${(rec.studentName.charCodeAt(0) * 37) % 360}, 65%, 55%)`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          color: '#fff', fontWeight: 800, fontSize: '0.9rem', flexShrink: 0,
-                        }}>
+                {filtered.map((rec) => (
+                  <tr key={rec._id} className="table-row">
+                    <td>
+                      <div className="student-cell">
+                        <div className="avatar">
                           {rec.studentName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                         </div>
-                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{rec.studentName}</span>
+                        <span className="student-name">{rec.studentName}</span>
                       </div>
                     </td>
-                    <td style={{ padding: '16px 20px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                      {rec.studentEmail}
-                    </td>
-                    {/* Points badge */}
-                    <td style={{ padding: '16px 20px' }}>
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        background: rec.points >= 0 ? '#fef3c7' : '#fee2e2',
-                        color: rec.points >= 0 ? '#92400e' : '#991b1b',
-                        padding: '5px 14px', borderRadius: 20, fontWeight: 800, fontSize: '1rem',
-                      }}>
-                        🍪 {rec.points}
+                    <td className="student-email">{rec.studentEmail}</td>
+                    <td>
+                      <span className={`bp-badge ${rec.points >= 0 ? 'positive' : 'negative'}`}>
+                        {rec.points} BP
                       </span>
                     </td>
-                    <td style={{ padding: '16px 20px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    <td className="last-updated">
                       {rec.history.length > 0
                         ? new Date(rec.history[rec.history.length - 1].awardedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                         : '—'}
                     </td>
-                    <td style={{ padding: '16px 20px' }}>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button
-                          onClick={() => { setSelected(rec); setShowHistory(false); setDelta(''); setReason(''); }}
-                          style={{
-                            background: 'var(--accent-purple)', color: '#fff',
-                            border: 'none', borderRadius: 8, padding: '7px 14px',
-                            fontWeight: 700, cursor: 'pointer', fontSize: '0.82rem',
-                          }}
-                        >
-                          ✏️ Edit BP
-                        </button>
+                    <td className="actions-cell">
+                      <div className="action-buttons">
                         {rec.history.length > 0 && (
                           <button
+                            className="btn-history"
                             onClick={() => { setSelected(rec); setShowHistory(true); }}
-                            style={{
-                              background: '#f1f5f9', color: 'var(--text-secondary)',
-                              border: '1px solid var(--border)', borderRadius: 8, padding: '7px 14px',
-                              fontWeight: 600, cursor: 'pointer', fontSize: '0.82rem',
-                            }}
                           >
-                            📜 History
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            History
                           </button>
                         )}
+                        <button
+                          className="btn-edit"
+                          onClick={() => { setSelected(rec); setShowHistory(false); setDelta(''); setReason(''); }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                          Edit BP
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -279,95 +235,61 @@ export default function BrowniePointsDashboard({ context }: Props) {
             </table>
           )}
         </div>
-      </div>
+      </main>
 
       {/* Edit / History Modal */}
       {selected && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-          backdropFilter: 'blur(6px)', zIndex: 1000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
-        }} onClick={() => setSelected(null)}>
-          <div
-            style={{
-              background: '#fff', borderRadius: 20, padding: 32, width: '100%', maxWidth: 480,
-              boxShadow: '0 20px 60px rgba(0,0,0,0.18)', animation: 'fadeIn 0.2s ease',
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div className="modal-overlay" onClick={() => setSelected(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
               <div>
-                <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                  {showHistory ? '📜 Points History' : '✏️ Edit Brownie Points'}
-                </h2>
-                <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.88rem' }}>
+                <h2>{showHistory ? 'Points History' : 'Edit Brownie Points'}</h2>
+                <p className="modal-subtitle">
                   {selected.studentName}
-                  <span style={{
-                    marginLeft: 10, background: '#fef3c7', color: '#92400e',
-                    padding: '2px 10px', borderRadius: 20, fontWeight: 700, fontSize: '0.82rem',
-                  }}>🍪 {selected.points} BP</span>
+                  <span className={`bp-badge minimal ${selected.points >= 0 ? 'positive' : 'negative'}`}>
+                    {selected.points} BP
+                  </span>
                 </p>
               </div>
-              <button onClick={() => setSelected(null)} style={{
-                background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: 'var(--text-muted)',
-              }}>✕</button>
+              <button className="btn-close" onClick={() => setSelected(null)}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
             </div>
 
             {showHistory ? (
-              <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              <div className="history-list">
                 {selected.history.length === 0 ? (
-                  <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px 0' }}>No history yet.</p>
+                  <p className="history-empty">No history yet.</p>
                 ) : (
                   [...selected.history].reverse().map((h, i) => (
-                    <div key={i} style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '12px 0', borderBottom: i < selected.history.length - 1 ? '1px solid var(--border-light)' : 'none',
-                    }}>
+                    <div key={i} className="history-item">
                       <div>
-                        <span style={{
-                          fontWeight: 700, fontSize: '1.05rem',
-                          color: h.delta >= 0 ? '#10b981' : '#ef4444',
-                        }}>
+                        <span className={`history-delta ${h.delta >= 0 ? 'text-green' : 'text-red'}`}>
                           {h.delta >= 0 ? '+' : ''}{h.delta} BP
                         </span>
-                        <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                          {h.reason || 'No reason given'} · by {h.awardedBy}
-                        </p>
+                        <p className="history-reason">{h.reason || 'No reason given'} &bull; by {h.awardedBy}</p>
                       </div>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      <span className="history-date">
                         {new Date(h.awardedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </span>
                     </div>
                   ))
                 )}
-                <button
-                  onClick={() => setShowHistory(false)}
-                  style={{
-                    marginTop: 16, width: '100%', padding: '11px', background: 'var(--accent-purple)',
-                    color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer',
-                  }}
-                >
-                  ✏️ Edit Points
+                <button className="btn-primary w-full mt-4" onClick={() => setShowHistory(false)}>
+                  <svg style={{marginRight: '6px'}} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                  Edit Points
                 </button>
               </div>
             ) : (
-              <>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-                    Point Change (use negative to deduct)
-                  </label>
-                  <div style={{ display: 'flex', gap: 8 }}>
+              <div className="edit-form">
+                <div className="form-group">
+                  <label>Point Change (use negative to deduct)</label>
+                  <div className="quick-deltas">
                     {[-10, -5, +5, +10].map(v => (
                       <button
                         key={v}
+                        className={`btn-delta ${delta === String(v) ? 'active' : ''} ${v > 0 ? 'positive' : 'negative'}`}
                         onClick={() => setDelta(String(v))}
-                        style={{
-                          flex: 1, padding: '9px 0',
-                          background: delta === String(v) ? 'var(--accent-purple)' : '#f1f5f9',
-                          color: delta === String(v) ? '#fff' : (v > 0 ? '#10b981' : '#ef4444'),
-                          border: `1.5px solid ${delta === String(v) ? 'var(--accent-purple)' : 'var(--border)'}`,
-                          borderRadius: 8, fontWeight: 700, cursor: 'pointer', fontSize: '0.92rem',
-                        }}
                       >
                         {v > 0 ? '+' : ''}{v}
                       </button>
@@ -375,58 +297,35 @@ export default function BrowniePointsDashboard({ context }: Props) {
                   </div>
                   <input
                     type="number"
+                    className="vibe-input mt-3"
                     placeholder="Or enter custom value..."
                     value={delta}
                     onChange={e => setDelta(e.target.value)}
-                    style={{
-                      marginTop: 10, width: '100%', padding: '10px 14px', borderRadius: 10,
-                      border: '1.5px solid var(--border)', fontSize: '1rem', color: 'var(--text-primary)',
-                      background: '#fff', boxSizing: 'border-box', outline: 'none',
-                    }}
                   />
                 </div>
-                <div style={{ marginBottom: 24 }}>
-                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-                    Reason (optional)
-                  </label>
+                
+                <div className="form-group mt-4">
+                  <label>Reason (optional)</label>
                   <input
                     type="text"
+                    className="vibe-input"
                     placeholder="e.g. Great participation today"
                     value={reason}
                     onChange={e => setReason(e.target.value)}
-                    style={{
-                      width: '100%', padding: '10px 14px', borderRadius: 10,
-                      border: '1.5px solid var(--border)', fontSize: '0.95rem', color: 'var(--text-primary)',
-                      background: '#fff', boxSizing: 'border-box', outline: 'none',
-                    }}
                   />
                 </div>
-                <div style={{ display: 'flex', gap: 10 }}>
+
+                <div className="modal-actions">
+                  <button className="btn-secondary" onClick={() => setSelected(null)}>Cancel</button>
                   <button
-                    onClick={() => setSelected(null)}
-                    style={{
-                      flex: 1, padding: '12px', background: '#f1f5f9', color: 'var(--text-secondary)',
-                      border: '1px solid var(--border)', borderRadius: 12, fontWeight: 700, cursor: 'pointer',
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
+                    className="btn-primary"
                     onClick={handleUpdate}
                     disabled={updating || delta === '' || isNaN(Number(delta))}
-                    style={{
-                      flex: 1, padding: '12px',
-                      background: updating || delta === '' ? '#e2e8f0' : 'var(--accent-purple)',
-                      color: updating || delta === '' ? 'var(--text-muted)' : '#fff',
-                      border: 'none', borderRadius: 12, fontWeight: 700,
-                      cursor: updating || delta === '' ? 'not-allowed' : 'pointer',
-                      fontSize: '0.95rem',
-                    }}
                   >
-                    {updating ? '⏳ Saving...' : '✅ Save Changes'}
+                    {updating ? 'Saving...' : 'Save Changes'}
                   </button>
                 </div>
-              </>
+              </div>
             )}
           </div>
         </div>
