@@ -3,6 +3,7 @@ import axios from 'axios';
 import QuizBuilder from './QuizBuilder';
 import QuizPlayer from './QuizPlayer';
 import BrowniePointsDashboard from './pages/BrowniePointsDashboard';
+import StudentBPDashboard from './pages/StudentBPDashboard';
 
 export interface LtiContext {
   userId: string;
@@ -94,6 +95,11 @@ export default function App() {
   // ── Brownie Points Dashboard (Instructor mode) ─────────────────────────────
   if (mode === 'bp_dashboard' && context?.role === 'Instructor') {
     return <BrowniePointsDashboard context={context} />;
+  }
+
+  // ── Brownie Points Dashboard (Student mode) ────────────────────────────────
+  if (mode === 'bp_student' && context?.role === 'Learner') {
+    return <StudentBPDashboard context={context} />;
   }
 
   // ── Deep-linking (Quiz Builder for teacher) ────────────────────────────────

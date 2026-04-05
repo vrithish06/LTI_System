@@ -27,6 +27,7 @@ router.get('/exam/:title', examController.getExamByTitle);
 // BROWNIE POINTS ROUTES
 // ─────────────────────────────────────────────────────────────────
 router.get('/bp/:courseId', bpController.getPointsByCourse);
+router.get('/bp/student/:courseId/:studentId', bpController.getStudentPoints);
 router.patch('/bp/:courseId/:studentId', bpController.adjustPointsForStudent);
 router.post('/bp/sync/:courseId', bpController.manuallySyncRoster);
 
