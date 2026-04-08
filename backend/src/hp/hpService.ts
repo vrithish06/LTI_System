@@ -1,4 +1,4 @@
-import { mongoose, connectDB } from '../db/database.js';
+import { mongoose, connectDB } from '../db/connection.js';
 import {
     UserModel,
     HpBalanceModel,

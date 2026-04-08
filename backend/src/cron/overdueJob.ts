@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { connectDB } from '../db/database.js';
+import { connectDB } from '../db/connection.js';
 import {
     UserModel,
     ActivityModel,

@@ -1,4 +1,4 @@
-import { connectDB } from '../db/database.js';
+import { connectDB } from '../db/connection.js';
 import { ExamModel, type IQuestion } from '../models/index.js';
 
 export async function saveExam(

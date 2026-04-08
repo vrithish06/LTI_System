@@ -1,4 +1,4 @@
-import { Schema, model, Document, models } from 'mongoose';
+import mongoose, { Schema, model, Document } from 'mongoose';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. User
@@ -21,7 +21,7 @@ const UserSchema = new Schema<IUser>(
 );
 UserSchema.index({ user_id: 1, course_id: 1 }, { unique: true });
 
-export const UserModel = models.User || model<IUser>('User', UserSchema);
+export const UserModel = mongoose.models.User || model<IUser>('User', UserSchema);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. HP Balance (cached current value for fast reads)
@@ -44,7 +44,7 @@ const HpBalanceSchema = new Schema<IHpBalance>(
 );
 HpBalanceSchema.index({ user_id: 1, course_id: 1 }, { unique: true });
 
-export const HpBalanceModel = models.HpBalance || model<IHpBalance>('HpBalance', HpBalanceSchema);
+export const HpBalanceModel = mongoose.models.HpBalance || model<IHpBalance>('HpBalance', HpBalanceSchema);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. HP Ledger (immutable audit trail — never mutate, only append)
@@ -80,12 +80,12 @@ const HpLedgerSchema = new Schema<IHpLedger>(
 HpLedgerSchema.index({ user_id: 1, course_id: 1 });
 HpLedgerSchema.index({ timestamp: -1 });
 
-export const HpLedgerModel = models.HpLedger || model<IHpLedger>('HpLedger', HpLedgerSchema);
+export const HpLedgerModel = mongoose.models.HpLedger || model<IHpLedger>('HpLedger', HpLedgerSchema);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. Activity
 // ─────────────────────────────────────────────────────────────────────────────
-export type ActivityType = 'ASSIGNMENT' | 'VIBE_MILESTONE' | 'LTI_TOOL';
+export type ActivityType = 'ASSIGNMENT' | 'VIBE_MILESTONE' | 'LTI_TOOL' | 'EXTERNAL_IMPORT';
 
 export interface ActivityRules {
     reward_hp?:              number;
@@ -113,7 +113,7 @@ const ActivitySchema = new Schema<IActivity>(
         activity_id:  { type: String,  required: true, unique: true },
         course_id:    { type: String,  required: true },
         title:        { type: String,  required: true },
-        type:         { type: String,  required: true, enum: ['ASSIGNMENT', 'VIBE_MILESTONE', 'LTI_TOOL'] },
+        type:         { type: String,  required: true, enum: ['ASSIGNMENT', 'VIBE_MILESTONE', 'LTI_TOOL', 'EXTERNAL_IMPORT'] },
         deadline:     { type: Date,    default: null },
         grace_period: { type: Number,  default: 0 },
         rules:        { type: Schema.Types.Mixed, default: {} },
@@ -125,7 +125,7 @@ const ActivitySchema = new Schema<IActivity>(
 ActivitySchema.index({ course_id: 1 });
 ActivitySchema.index({ deadline: 1 });
 
-export const ActivityModel = models.Activity || model<IActivity>('Activity', ActivitySchema);
+export const ActivityModel = mongoose.models.Activity || model<IActivity>('Activity', ActivitySchema);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 5. Submission
@@ -159,7 +159,7 @@ const SubmissionSchema = new Schema<ISubmission>(
 SubmissionSchema.index({ user_id: 1, activity_id: 1 }, { unique: true });
 SubmissionSchema.index({ course_id: 1 });
 
-export const SubmissionModel = models.Submission || model<ISubmission>('Submission', SubmissionSchema);
+export const SubmissionModel = mongoose.models.Submission || model<ISubmission>('Submission', SubmissionSchema);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 6. Exam (persistent quiz storage — replaces in-memory map)
@@ -188,7 +188,7 @@ const ExamSchema = new Schema<IExam>(
     { collection: 'exams' }
 );
 
-export const ExamModel = models.Exam || model<IExam>('Exam', ExamSchema);
+export const ExamModel = mongoose.models.Exam || model<IExam>('Exam', ExamSchema);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 7. Processed Overdue (idempotency guard for cron penalties)
@@ -210,4 +210,4 @@ const ProcessedOverdueSchema = new Schema<IProcessedOverdue>(
 ProcessedOverdueSchema.index({ user_id: 1, activity_id: 1 }, { unique: true });
 
 export const ProcessedOverdueModel =
-    models.ProcessedOverdue || model<IProcessedOverdue>('ProcessedOverdue', ProcessedOverdueSchema);
+    mongoose.models.ProcessedOverdue || model<IProcessedOverdue>('ProcessedOverdue', ProcessedOverdueSchema);

@@ -5,7 +5,7 @@ let isConnected = false;
 export async function connectDB(): Promise<void> {
     if (isConnected) return;
 
-    const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/lti_system';
+    const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/lti_system';
 
     try {
         await mongoose.connect(MONGO_URI);
@@ -16,3 +16,5 @@ export async function connectDB(): Promise<void> {
         throw error;
     }
 }
+
+export { mongoose };

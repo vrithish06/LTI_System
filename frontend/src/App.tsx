@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import QuizBuilder from './QuizBuilder';
 import QuizPlayer from './QuizPlayer';
 import BrowniePointsDashboard from './pages/BrowniePointsDashboard';
 import StudentBPDashboard from './pages/StudentBPDashboard';
+import ActivityDetail from './pages/ActivityDetail';
+import ActivityCreator from './ActivityCreator';
 
 export interface LtiContext {
   userId: string;
@@ -102,6 +103,34 @@ export default function App() {
     return <StudentBPDashboard context={context} />;
   }
 
+  // ── Activity Detail (Student submits an activity) ─────────────────────────
+  // Launched when a student clicks an activity in Vibe (mode=activity_detail)
+  if ((mode === 'activity_detail' || mode === 'activity') && context?.role === 'Learner') {
+    return (
+      <div className="app-wrapper">
+        <div className="tool-page">
+          <div className="tool-header">
+            <div className="header-left">
+              <div className="lti-badge">LTI Tool</div>
+              <h1 style={{ color: 'var(--text-primary)' }}>{context?.activityTitle || 'Activity'}</h1>
+            </div>
+          </div>
+          <ActivityDetail
+            context={context}
+            onSuccess={(hp: number) => {
+              setHpAwarded(hp);
+              setState('success');
+            }}
+            onError={(msg: string) => {
+              setErrorMsg(msg);
+              setState('error');
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   // ── Deep-linking (Quiz Builder for teacher) ────────────────────────────────
   if (context?.isDeepLinking) {
     return (
@@ -113,7 +142,17 @@ export default function App() {
               <h1 style={{ color: 'var(--text-primary)' }}>Create Activity</h1>
             </div>
           </div>
-          <QuizBuilder context={context} />
+          <ActivityCreator
+            context={context}
+            onSuccess={(hp: number) => {
+              setHpAwarded(hp);
+              setState('success');
+            }}
+            onError={(msg: string) => {
+              setErrorMsg(msg);
+              setState('error');
+            }}
+          />
         </div>
       </div>
     );

@@ -7,8 +7,22 @@ import { connectDB } from './db/connection.js';
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Allow requests from VIBE frontend, LTI frontend, and VIBE backend
+const allowedOrigins = [
+    process.env.VIBE_BASE_URL     || 'http://localhost:3141',
+    process.env.VIBE_FRONTEND_URL || 'http://localhost:5173',
+    'http://localhost:5174',  // LTI frontend dev server
+];
+
 app.use(cors({
-    origin: process.env.VIBE_BASE_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+        // Allow requests with no origin (curl, server-to-server)
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error(`CORS blocked: ${origin}`));
+        }
+    },
     credentials: true,
 }));
 
