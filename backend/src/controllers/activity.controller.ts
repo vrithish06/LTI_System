@@ -4,6 +4,8 @@ import {
     getActivitiesByCourse,
     submitActivity,
     getUserSubmissions,
+    updateActivity,
+    deleteActivity,
 } from '../activity/activityService.js';
 import { getHpBalance } from '../hp/hpService.js';
 
@@ -183,6 +185,65 @@ export class ActivityController {
         } catch (err: any) {
             console.error('[BP Fetch Student] Error:', err.message);
             res.status(500).json({ error: 'Failed to fetch brownie points', detail: err.message });
+        }
+    }
+    /**
+     * PUT /api/lti/activities/:activityId
+     * Body: same fields as create (all optional)
+     * Instructor-only: update an existing activity.
+     */
+    public async updateActivityById(req: Request, res: Response): Promise<void> {
+        try {
+            const { activityId } = req.params;
+            const body = req.body;
+
+            const rules: any = {};
+            if (body.rewardValue !== undefined) rules.reward_hp = Number(body.rewardValue);
+            if (body.rewardType !== undefined) rules.reward_type = body.rewardType;
+            if (body.penaltyType !== undefined && body.mandatory) {
+                if (body.penaltyType === 'ABSOLUTE') rules.late_penalty_hp = Number(body.penaltyValue) || 0;
+                if (body.penaltyType === 'PERCENTAGE') rules.late_penalty_percent = Number(body.penaltyValue) || 0;
+            }
+            if (body.hpAssignmentMode !== undefined) rules.hp_assignment_mode = body.hpAssignmentMode;
+            if (body.submissionMode !== undefined) rules.submission_mode = body.submissionMode;
+            if (body.description !== undefined) rules.description = body.description;
+
+            const updated = await updateActivity(activityId, {
+                title: body.title,
+                type: body.activityType,
+                deadline: body.deadline ? new Date(body.deadline) : undefined,
+                grace_period: body.gracePeriodDuration !== undefined ? Number(body.gracePeriodDuration) * 60 : undefined,
+                rules: Object.keys(rules).length > 0 ? rules : undefined,
+                is_mandatory: body.mandatory !== undefined ? body.mandatory : undefined,
+            });
+
+            if (!updated) {
+                res.status(404).json({ error: 'Activity not found' });
+                return;
+            }
+            res.json({ success: true, data: updated });
+        } catch (err: any) {
+            console.error('[Activity Update] Error:', err.message);
+            res.status(500).json({ error: 'Failed to update activity', detail: err.message });
+        }
+    }
+
+    /**
+     * DELETE /api/lti/activities/:activityId
+     * Instructor-only: delete an activity.
+     */
+    public async deleteActivityById(req: Request, res: Response): Promise<void> {
+        try {
+            const { activityId } = req.params;
+            const deleted = await deleteActivity(activityId);
+            if (!deleted) {
+                res.status(404).json({ error: 'Activity not found' });
+                return;
+            }
+            res.json({ success: true, message: 'Activity deleted' });
+        } catch (err: any) {
+            console.error('[Activity Delete] Error:', err.message);
+            res.status(500).json({ error: 'Failed to delete activity', detail: err.message });
         }
     }
 }

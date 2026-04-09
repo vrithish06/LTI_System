@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import axios from 'axios';
 import { LtiContext } from './App';
 
@@ -36,21 +36,12 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
     }));
   };
 
-  const handleToggle = (name: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [name]: !(prev as any)[name]
-    }));
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!formData.title || !formData.deadline) {
-      alert("Please fill in all required fields (title, deadline)");
+      alert('Please fill in all required fields (title, deadline)');
       return;
     }
-
     setIsLoading(true);
     try {
       const requestBody = {
@@ -64,37 +55,31 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
         deadline: new Date(formData.deadline).toISOString(),
         penaltyType: formData.mandatory ? formData.penaltyType : null,
         penaltyValue: formData.mandatory ? Number(formData.penaltyValue) : null,
-        context // pass full context for deep-linking detection
+        context,
       };
 
       const response = await axios.post('/api/activities', requestBody);
 
       if (response.data.success) {
-        // Handle LTI Deep Linking: Return the link to Vibe
         if (context.isDeepLinking && context.deepLinkReturnUrl && response.data.JWT) {
-          // To ensure the browser follows the Vibe backend's redirect, 
-          // we use a classic form submission instead of just an AJAX call.
           const form = document.createElement('form');
           form.method = 'POST';
           form.action = context.deepLinkReturnUrl;
-          
           const jwtInput = document.createElement('input');
           jwtInput.type = 'hidden';
           jwtInput.name = 'JWT';
           jwtInput.value = response.data.JWT;
-          
           form.appendChild(jwtInput);
           document.body.appendChild(form);
           form.submit();
           return;
         }
-        
-        onSuccess(requestBody.rewardValue); // Callback to switch view
+        onSuccess(requestBody.rewardValue);
         if (context.isDeepLinking) window.close();
       }
     } catch (error: any) {
       console.error('Activity creation error:', error);
-      const msg = error.response?.data?.error || error.response?.data?.message || "Failed to create activity";
+      const msg = error.response?.data?.error || error.response?.data?.message || 'Failed to create activity';
       alert(`Error: ${msg}`);
       onError(msg);
     } finally {
@@ -104,43 +89,40 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
 
   return (
     <div className="activity-creator-form">
-      <div className="activity-header">
-        <div className="activity-icon">✨</div>
-        <div className="activity-meta">
-          <h2>{context.isDeepLinking ? 'Configure New Activity' : 'Create Activity'}</h2>
-          <p>Set up the details, rewards, and deadlines for this activity.</p>
+      {/* Header */}
+      <div className="acr-header">
+        <div className="acr-header-icon">✨</div>
+        <div>
+          <h2 className="acr-title">
+            {context.isDeepLinking ? 'Configure New Activity' : 'Create Activity'}
+          </h2>
+          <p className="acr-subtitle">Set up the details, rewards and deadlines for this activity.</p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="vibe-form-grid">
-        <div className="form-section full-width">
-          <label>Title *</label>
-          <input 
-            type="text" 
-            name="title" 
-            value={formData.title} 
-            onChange={handleChange} 
-            placeholder="e.g. Weekly Quiz 1" 
-            className="vibe-input" 
-            required 
+      <form onSubmit={handleSubmit} className="acr-form">
+        {/* ── Full: Title ── */}
+        <div className="acr-field acr-full">
+          <label className="acr-label">Title <span className="acr-req">*</span></label>
+          <input
+            type="text" name="title" value={formData.title} onChange={handleChange}
+            placeholder="e.g. Weekly Quiz 1" className="acr-input" required
           />
         </div>
 
-        <div className="form-section full-width">
-          <label>Description</label>
-          <textarea 
-            name="description" 
-            value={formData.description} 
-            onChange={handleChange} 
-            placeholder="Describe the activity..." 
-            className="vibe-input" 
-            rows={3} 
+        {/* ── Full: Description ── */}
+        <div className="acr-field acr-full">
+          <label className="acr-label">Description</label>
+          <textarea
+            name="description" value={formData.description} onChange={handleChange}
+            placeholder="Describe the activity..." className="acr-input acr-textarea" rows={3}
           />
         </div>
 
-        <div className="form-section mt-1">
-          <label>Activity Type</label>
-          <select name="activityType" value={formData.activityType} onChange={handleChange} className="vibe-input">
+        {/* ── Row: Activity Type + Submission Mode ── */}
+        <div className="acr-field">
+          <label className="acr-label">Activity Type</label>
+          <select name="activityType" value={formData.activityType} onChange={handleChange} className="acr-input">
             <option value="ASSIGNMENT">Assignment</option>
             <option value="VIBE_MILESTONE">VIBE Milestone</option>
             <option value="EXTERNAL_IMPORT">External Import</option>
@@ -148,133 +130,105 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
           </select>
         </div>
 
-        <div className="form-section mt-1">
-          <label>Submission Mode</label>
-          <select name="submissionMode" value={formData.submissionMode} onChange={handleChange} className="vibe-input">
+        <div className="acr-field">
+          <label className="acr-label">Submission Mode</label>
+          <select name="submissionMode" value={formData.submissionMode} onChange={handleChange} className="acr-input">
             <option value="IN_PLATFORM">In Platform</option>
             <option value="EXTERNAL_LINK">External Link</option>
             <option value="CSV_IMPORT">CSV Import</option>
           </select>
         </div>
 
-        <div className="form-section mt-1">
-          <label>Deadline *</label>
-          <input 
-            type="datetime-local" 
-            name="deadline" 
-            value={formData.deadline} 
-            onChange={handleChange} 
-            className="vibe-input" 
-            required 
+        {/* ── Row: Deadline + HP Assignment Mode ── */}
+        <div className="acr-field">
+          <label className="acr-label">Deadline <span className="acr-req">*</span></label>
+          <input
+            type="datetime-local" name="deadline" value={formData.deadline}
+            onChange={handleChange} className="acr-input" required
           />
         </div>
 
-        <div className="form-section mt-1">
-          <label>HP Assignment Mode</label>
-          <select name="hpAssignmentMode" value={formData.hpAssignmentMode} onChange={handleChange} className="vibe-input">
+        <div className="acr-field">
+          <label className="acr-label">HP Assignment Mode</label>
+          <select name="hpAssignmentMode" value={formData.hpAssignmentMode} onChange={handleChange} className="acr-input">
             <option value="AUTOMATIC">Automatic</option>
             <option value="MANUAL">Manual</option>
           </select>
         </div>
 
-        <div className="form-divider full-width"></div>
+        <div className="acr-divider acr-full" />
 
-        <div className="form-section mt-1">
-          <label>Reward Type</label>
-          <select name="rewardType" value={formData.rewardType} onChange={handleChange} className="vibe-input">
-            <option value="ABSOLUTE">Absolute (Fixed HP)</option>
+        {/* ── Row: Reward Type + Reward Value ── */}
+        <div className="acr-field">
+          <label className="acr-label">Reward Type</label>
+          <select name="rewardType" value={formData.rewardType} onChange={handleChange} className="acr-input">
+            <option value="ABSOLUTE">Absolute (Fixed BP)</option>
             <option value="PERCENTAGE">Percentage (%)</option>
           </select>
         </div>
 
-        <div className="form-section mt-1">
-          <label>Reward Value</label>
-          <input 
-            type="number" 
-            name="rewardValue" 
-            value={formData.rewardValue} 
-            onChange={handleChange} 
-            className="vibe-input" 
-          />
+        <div className="acr-field">
+          <label className="acr-label">Reward Value (BP)</label>
+          <input type="number" name="rewardValue" value={formData.rewardValue} onChange={handleChange} className="acr-input" />
         </div>
 
-        <div className="form-section checkbox-section">
-          <div className="checkbox-wrapper">
-             <input 
-               type="checkbox" 
-               id="mandatory" 
-               name="mandatory" 
-               checked={formData.mandatory} 
-               onChange={handleChange} 
-             />
-             <label htmlFor="mandatory">Mandatory Activity</label>
+        {/* ── Row: Grace Period + Grace Reward ── */}
+        <div className="acr-field">
+          <label className="acr-label">Grace Period (Hours)</label>
+          <input type="number" name="gracePeriodDuration" value={formData.gracePeriodDuration} onChange={handleChange} className="acr-input" />
+        </div>
+
+        {Number(formData.gracePeriodDuration) > 0 ? (
+          <div className="acr-field">
+            <label className="acr-label">Grace Reward (%)</label>
+            <input type="number" name="graceRewardPercentage" value={formData.graceRewardPercentage} onChange={handleChange} className="acr-input" />
           </div>
+        ) : <div className="acr-field" />}
+
+        <div className="acr-divider acr-full" />
+
+        {/* ── Checkboxes ── */}
+        <div className="acr-checks acr-full">
+          <label className="acr-check-row">
+            <input type="checkbox" name="mandatory" checked={formData.mandatory} onChange={handleChange} className="acr-checkbox" />
+            <span className="acr-check-label">
+              <span className="acr-check-title">Mandatory Activity</span>
+              <span className="acr-check-sub">Students must complete this for full credit</span>
+            </span>
+          </label>
+          <label className="acr-check-row">
+            <input type="checkbox" name="isProofRequired" checked={formData.isProofRequired} onChange={handleChange} className="acr-checkbox" />
+            <span className="acr-check-label">
+              <span className="acr-check-title">Proof Required</span>
+              <span className="acr-check-sub">Students must upload evidence of completion</span>
+            </span>
+          </label>
         </div>
 
-        <div className="form-section checkbox-section">
-          <div className="checkbox-wrapper">
-             <input 
-               type="checkbox" 
-               id="isProofRequired" 
-               name="isProofRequired" 
-               checked={formData.isProofRequired} 
-               onChange={handleChange} 
-             />
-             <label htmlFor="isProofRequired">Proof Required</label>
-          </div>
-        </div>
-
+        {/* ── Penalty (mandatory only) ── */}
         {formData.mandatory && (
           <>
-            <div className="form-section mt-1">
-              <label>Penalty Type</label>
-              <select name="penaltyType" value={formData.penaltyType} onChange={handleChange} className="vibe-input">
+            <div className="acr-field">
+              <label className="acr-label">Penalty Type</label>
+              <select name="penaltyType" value={formData.penaltyType} onChange={handleChange} className="acr-input">
                 <option value="PERCENTAGE">Percentage (%)</option>
-                <option value="ABSOLUTE">Absolute (Fixed HP)</option>
+                <option value="ABSOLUTE">Absolute (Fixed BP)</option>
               </select>
             </div>
-            <div className="form-section mt-1">
-              <label>Penalty Value</label>
-              <input 
-                type="number" 
-                name="penaltyValue" 
-                value={formData.penaltyValue} 
-                onChange={handleChange} 
-                className="vibe-input" 
-              />
+            <div className="acr-field">
+              <label className="acr-label">Penalty Value</label>
+              <input type="number" name="penaltyValue" value={formData.penaltyValue} onChange={handleChange} className="acr-input" />
             </div>
           </>
         )}
 
-        <div className="form-divider full-width"></div>
-
-        <div className="form-section mt-1">
-          <label>Grace Period (Hours)</label>
-          <input 
-            type="number" 
-            name="gracePeriodDuration" 
-            value={formData.gracePeriodDuration} 
-            onChange={handleChange} 
-            className="vibe-input" 
-          />
-        </div>
-
-        {Number(formData.gracePeriodDuration) > 0 && (
-          <div className="form-section mt-1">
-            <label>Grace Reward (%)</label>
-            <input 
-              type="number" 
-              name="graceRewardPercentage" 
-              value={formData.graceRewardPercentage} 
-              onChange={handleChange} 
-              className="vibe-input" 
-            />
-          </div>
-        )}
-
-        <div className="form-actions full-width">
-          <button type="submit" disabled={isLoading} className="btn-primary-v2">
-            {isLoading ? 'Creating...' : 'Create Activity & Link to Vibe'}
+        {/* ── Submit ── */}
+        <div className="acr-actions acr-full">
+          {!context.courseId && (
+            <p className="acr-warn">⚠ Missing course context — re-launch from Vibe to link this activity.</p>
+          )}
+          <button type="submit" disabled={isLoading || !context.courseId} className="acr-submit-btn">
+            {isLoading ? 'Creating…' : '✓ Create Activity & Link to Vibe'}
           </button>
         </div>
       </form>

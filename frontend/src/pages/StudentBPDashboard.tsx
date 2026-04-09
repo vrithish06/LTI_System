@@ -36,10 +36,6 @@ export default function StudentBPDashboard({ context }: Props) {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Sync roster first (silently), then fetch student data
-        const syncRes = await axios.post(`/api/bp/sync/${courseId}`).catch(() => null);
-        if (syncRes?.data?.courseName) setCourseName(syncRes.data.courseName);
-
         const { data } = await axios.get(`/api/bp/student/${courseId}/${studentId}`);
         if (data.success) {
           setRecord(data.record);

@@ -55,6 +55,22 @@ router.post('/lti/activities/:activityId/submit', (req: Request, res: Response) 
     );
 });
 
+// PUT /api/lti/activities/:activityId  — instructor updates an activity
+router.put('/lti/activities/:activityId', (req: Request, res: Response) => {
+    return activityController.updateActivityById(
+        { ...req, params: { activityId: req.params.activityId } } as any,
+        res
+    );
+});
+
+// DELETE /api/lti/activities/:activityId  — instructor deletes an activity
+router.delete('/lti/activities/:activityId', (req: Request, res: Response) => {
+    return activityController.deleteActivityById(
+        { ...req, params: { activityId: req.params.activityId } } as any,
+        res
+    );
+});
+
 // GET /api/lti/submissions/:userId/:courseId
 router.get('/lti/submissions/:userId/:courseId', (req: Request, res: Response) => {
     return activityController.getUserSubmissions(

@@ -4,6 +4,7 @@ import BrowniePointsDashboard from './BrowniePointsDashboard';
 import StudentBPDashboard from './StudentBPDashboard';
 import ActivityCreator from '../ActivityCreator';
 import ActivitiesList from './ActivitiesList';
+import InstructorActivitiesManager from './InstructorActivitiesManager';
 import ActivityDetail from './ActivityDetail';
 import type { ActivityRecord } from './ActivitiesTypes';
 import '../index.css';
@@ -17,8 +18,8 @@ type Section = 'bp' | 'add_activity' | 'activities';
 export default function Dashboard({ context }: Props) {
   const isInstructor = context.role === 'Instructor';
 
-  // Default section: BP. If student and BP not visible or not enabled, show activities.
-  const defaultSection: Section = 'bp';
+  // Instructors default to Brownie Points management; students default to Activities list
+  const defaultSection: Section = isInstructor ? 'bp' : 'activities';
   const [activeSection, setActiveSection] = useState<Section>(defaultSection);
   const [selectedActivity, setSelectedActivity] = useState<ActivityRecord | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false); // for mobile
@@ -40,7 +41,7 @@ export default function Dashboard({ context }: Props) {
   const navItems: { id: Section; label: string; icon: JSX.Element; teacherOnly?: boolean }[] = [
     {
       id: 'bp',
-      label: 'Manage Brownie Points',
+      label: isInstructor ? 'Manage BP' : 'My BP',
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z" />
@@ -122,6 +123,18 @@ export default function Dashboard({ context }: Props) {
           </div>
         );
       case 'activities':
+        // Instructors see the full management view (edit/delete/create)
+        // Students see the submission/detail view
+        if (isInstructor) {
+          return (
+            <div className="dashboard-content-area">
+              <InstructorActivitiesManager
+                context={context}
+                onAddActivity={() => handleNavClick('add_activity')}
+              />
+            </div>
+          );
+        }
         return (
           <div className="dashboard-content-area">
             <ActivitiesList context={context} onOpenActivity={handleOpenActivity} />

@@ -62,6 +62,31 @@ export async function getActivitiesByCourse(course_id: string): Promise<IActivit
     return ActivityModel.find({ course_id }).sort({ deadline: 1 });
 }
 
+export async function updateActivity(activity_id: string, updates: Partial<{
+    title: string;
+    type: ActivityType;
+    deadline: Date | string | null;
+    grace_period: number;
+    rules: ActivityRules;
+    is_mandatory: boolean;
+}>): Promise<IActivity | null> {
+    await connectDB();
+    const setFields: any = {};
+    if (updates.title !== undefined) setFields.title = updates.title;
+    if (updates.type !== undefined) setFields.type = updates.type;
+    if (updates.deadline !== undefined) setFields.deadline = updates.deadline ? new Date(updates.deadline as string) : null;
+    if (updates.grace_period !== undefined) setFields.grace_period = updates.grace_period;
+    if (updates.rules !== undefined) setFields.rules = updates.rules;
+    if (updates.is_mandatory !== undefined) setFields.is_mandatory = updates.is_mandatory;
+    return ActivityModel.findOneAndUpdate({ activity_id }, { $set: setFields }, { new: true });
+}
+
+export async function deleteActivity(activity_id: string): Promise<boolean> {
+    await connectDB();
+    const result = await ActivityModel.deleteOne({ activity_id });
+    return result.deletedCount > 0;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Submission Logic
 // ─────────────────────────────────────────────────────────────────────────────
