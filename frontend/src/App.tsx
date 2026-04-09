@@ -5,6 +5,7 @@ import BrowniePointsDashboard from './pages/BrowniePointsDashboard';
 import StudentBPDashboard from './pages/StudentBPDashboard';
 import ActivityDetail from './pages/ActivityDetail';
 import ActivityCreator from './ActivityCreator';
+import Dashboard from './pages/Dashboard';
 
 export interface LtiContext {
   userId: string;
@@ -91,6 +92,11 @@ export default function App() {
         </div>
       </div>
     );
+  }
+
+  // ── Unified LTI Dashboard (new single-entry-point mode) ─────────────────────
+  if (mode === 'dashboard') {
+    return <Dashboard context={context} />;
   }
 
   // ── Brownie Points Dashboard (Instructor mode) ─────────────────────────────

@@ -89,7 +89,7 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
           return;
         }
         
-        alert("Activity created successfully in LTI!");
+        onSuccess(requestBody.rewardValue); // Callback to switch view
         if (context.isDeepLinking) window.close();
       }
     } catch (error: any) {
