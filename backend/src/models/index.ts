@@ -105,6 +105,7 @@ export interface IActivity extends Document {
     grace_period: number;   // minutes
     rules:        ActivityRules;
     is_mandatory: boolean;
+    is_proof_required: boolean;
     created_at:   Date;
 }
 
@@ -118,6 +119,7 @@ const ActivitySchema = new Schema<IActivity>(
         grace_period: { type: Number,  default: 0 },
         rules:        { type: Schema.Types.Mixed, default: {} },
         is_mandatory: { type: Boolean, default: true },
+        is_proof_required: { type: Boolean, default: false },
         created_at:   { type: Date,    default: () => new Date() },
     },
     { collection: 'activities' }
@@ -141,6 +143,7 @@ export interface ISubmission extends Document {
     score_max?:     number;
     submitted_at:   Date;
     penalty_applied: boolean;  // idempotency guard for cron
+    proof_url?:     string;
 }
 
 const SubmissionSchema = new Schema<ISubmission>(
@@ -153,6 +156,7 @@ const SubmissionSchema = new Schema<ISubmission>(
         score_max:       { type: Number,  default: null },
         submitted_at:    { type: Date,    default: () => new Date() },
         penalty_applied: { type: Boolean, default: false },
+        proof_url:       { type: String,  default: null },
     },
     { collection: 'submissions' }
 );

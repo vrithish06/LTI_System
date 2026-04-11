@@ -38,4 +38,4 @@ const ExamSchema = new Schema<IExam>({
 // Unique per course + title
 ExamSchema.index({ courseId: 1, title: 1 }, { unique: true });
 
-export const ExamModel = mongoose.model<IExam>('Exam', ExamSchema);
+export const ExamModel = mongoose.models.Exam || mongoose.model<IExam>('Exam', ExamSchema);

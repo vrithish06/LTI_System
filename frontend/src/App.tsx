@@ -12,6 +12,7 @@ export interface LtiContext {
   userEmail: string;
   userName: string;
   courseId: string;
+  courseName?: string;
   courseVersionId: string;
   activityId: string;
   activityTitle: string;

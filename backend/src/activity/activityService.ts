@@ -28,6 +28,7 @@ export async function registerActivity(params: {
     grace_period?: number;
     rules?: ActivityRules;
     is_mandatory?: boolean;
+    is_proof_required?: boolean;
 }): Promise<IActivity> {
     await connectDB();
 
@@ -44,6 +45,7 @@ export async function registerActivity(params: {
                 grace_period: grace_period ?? 0,
                 rules: rules ?? {},
                 is_mandatory: is_mandatory !== false,
+                is_proof_required: params.is_proof_required ?? false,
             },
         },
         { upsert: true, new: true },
@@ -57,9 +59,34 @@ export async function getActivity(activity_id: string): Promise<IActivity | null
     return ActivityModel.findOne({ activity_id });
 }
 
-export async function getActivitiesByCourse(course_id: string): Promise<IActivity[]> {
+export async function getActivitiesByCourse(course_id: string, user_id?: string): Promise<any[]> {
     await connectDB();
-    return ActivityModel.find({ course_id }).sort({ deadline: 1 });
+    const activities = await ActivityModel.find({ course_id }).lean();
+    
+    if (user_id) {
+        const submissions = await SubmissionModel.find({ user_id, course_id }).lean();
+        const list = activities.map(a => ({
+            ...a,
+            is_submitted: submissions.some(s => s.activity_id === a.activity_id)
+        }));
+
+        return list.sort((a, b) => {
+            // Unsubmitted first
+            if (a.is_submitted !== b.is_submitted) {
+                return a.is_submitted ? 1 : -1;
+            }
+            // Then sort by deadline
+            if (!a.deadline) return 1;
+            if (!b.deadline) return -1;
+            return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+        });
+    }
+
+    return activities.sort((a, b) => {
+        if (!a.deadline) return 1;
+        if (!b.deadline) return -1;
+        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+    });
 }
 
 export async function updateActivity(activity_id: string, updates: Partial<{
@@ -69,6 +96,7 @@ export async function updateActivity(activity_id: string, updates: Partial<{
     grace_period: number;
     rules: ActivityRules;
     is_mandatory: boolean;
+    is_proof_required: boolean;
 }>): Promise<IActivity | null> {
     await connectDB();
     const setFields: any = {};
@@ -78,6 +106,7 @@ export async function updateActivity(activity_id: string, updates: Partial<{
     if (updates.grace_period !== undefined) setFields.grace_period = updates.grace_period;
     if (updates.rules !== undefined) setFields.rules = updates.rules;
     if (updates.is_mandatory !== undefined) setFields.is_mandatory = updates.is_mandatory;
+    if (updates.is_proof_required !== undefined) setFields.is_proof_required = updates.is_proof_required;
     return ActivityModel.findOneAndUpdate({ activity_id }, { $set: setFields }, { new: true });
 }
 
@@ -105,14 +134,20 @@ export async function submitActivity(params: {
     course_id: string;
     score?: number;
     score_max?: number;
+    proof_url?: string;
 }): Promise<SubmitActivityResult> {
     await connectDB();
 
-    const { user_id, activity_id, course_id, score, score_max } = params;
+    const { user_id, activity_id, course_id, score, score_max, proof_url } = params;
+
+    console.log(`[Submission Attempt] user=${user_id} activity=${activity_id} course=${course_id}`);
 
     // ── 1. Get activity ──
     const activity = await getActivity(activity_id);
-    if (!activity) throw new Error(`Activity ${activity_id} not found`);
+    if (!activity) {
+        console.error(`[Submission Error] Activity ${activity_id} not found`);
+        throw new Error(`Activity ${activity_id} not found`);
+    }
 
     const rules: ActivityRules = activity.rules ?? {};
     const now = new Date();
@@ -120,10 +155,23 @@ export async function submitActivity(params: {
     // ── 2. Determine on-time vs late ──
     let status: SubmissionStatus = 'COMPLETED';
     if (activity.deadline) {
-        const graceEnd = new Date(
-            activity.deadline.getTime() + (activity.grace_period ?? 0) * 60_000,
-        );
-        if (now > graceEnd) status = 'LATE';
+        console.log(`[Deadline Check] now=${now.toISOString()}, deadline=${new Date(activity.deadline).toISOString()}`);
+        const getISTTime = (date?: Date | null) => {
+            if (!date) return new Date();
+            return new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+        };
+        const nowIST = getISTTime(now);
+        const deadlineIST = getISTTime(activity.deadline);
+
+        if (nowIST > deadlineIST) {
+            console.warn(`[Deadline Exceeded] Blocked submission user=${user_id} activity=${activity_id}`);
+            throw new Error('Deadline exceeded. You cannot submit this activity.');
+        }
+    }
+
+    const existingSubmission = await SubmissionModel.findOne({ user_id, activity_id });
+    if (existingSubmission) {
+        throw new Error('Activity already submitted. Multiple submissions are not allowed.');
     }
 
     // ── 3. Upsert submission (UNIQUE: one per user+activity) ──
@@ -136,10 +184,12 @@ export async function submitActivity(params: {
                 score: score ?? null,
                 score_max: score_max ?? null,
                 submitted_at: now,
+                ...(proof_url && { proof_url }),
             },
         },
         { upsert: true, new: true },
     );
+    console.log(`[Submission Success] Upserted submission user=${user_id} activity=${activity_id}`);
 
     // ── 4. Apply HP rules ──
     let hp_change = 0;

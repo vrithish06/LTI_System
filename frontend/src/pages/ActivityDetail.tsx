@@ -11,6 +11,7 @@ interface ActivityRecord {
   deadline?: string;
   grace_period?: number;
   is_mandatory?: boolean;
+  is_proof_required?: boolean;
   rules?: {
     reward_hp?: number;
     late_penalty_hp?: number;
@@ -51,6 +52,8 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
   const [hpChange, setHpChange] = useState(0);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
 
   const activityId = context.activityId;
   const courseId = context.courseId;
@@ -105,11 +108,26 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
     setSubmitState('submitting');
     setConfirmOpen(false);
     try {
-      // Use the public /lti/activities route — no shared secret needed from browser
-      const { data } = await axios.post(`/api/lti/activities/${activityId}/submit`, {
-        user_id: userId,
-        course_id: courseId,
-      });
+      let reqData: any;
+      let headers: any = {};
+
+      if (activity?.is_proof_required) {
+        if (!proofFile) {
+          showToast('Proof file is required.', 'error');
+          setSubmitState('error');
+          return;
+        }
+        const formData = new FormData();
+        formData.append('user_id', userId);
+        formData.append('course_id', courseId);
+        formData.append('proof', proofFile);
+        reqData = formData;
+        headers['Content-Type'] = 'multipart/form-data';
+      } else {
+        reqData = { user_id: userId, course_id: courseId };
+      }
+
+      const { data } = await axios.post(`/api/lti/activities/${activityId}/submit`, reqData, { headers });
 
       // Response shape: { success, data: { submission, status, hp_change, message } }
       const result = data.data || data;
@@ -127,7 +145,24 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
       showToast(result.message || 'Activity submitted!', 'success');
       onSuccess?.(result.hp_change ?? 0);
     } catch (err: any) {
-      const msg = err?.response?.data?.error || 'Submission failed. Please try again.';
+      const serverMsg = err?.response?.data?.error;
+      const status = err?.response?.status;
+
+      // 409 = already submitted — treat as success, refresh submission state
+      if (status === 409) {
+        showToast('Activity already submitted.', 'success');
+        // Reload submission data to reflect true state
+        try {
+          const subRes = await axios.get(`/api/lti/submissions/${userId}/${courseId}`);
+          const list: SubmissionRecord[] = subRes.data.data || subRes.data.submissions || [];
+          const found = list.find((s: SubmissionRecord) => s.activity_id === activityId);
+          if (found) setSubmission(found);
+        } catch (_) {}
+        setSubmitState('done');
+        return;
+      }
+
+      const msg = serverMsg || 'Submission failed. Please try again.';
       setSubmitState('error');
       showToast(msg, 'error');
       onError?.(msg);
@@ -135,10 +170,18 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
   };
 
   const isCompleted = submission?.status === 'COMPLETED' || submission?.status === 'LATE';
+
+  const getISTTime = (date?: Date | string | null) => {
+    if (!date) return new Date();
+    const d = new Date(date);
+    return new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+  };
+  const nowIST = getISTTime();
+  const deadlineIST = activity?.deadline ? getISTTime(activity.deadline) : null;
+  const isExpired = deadlineIST && nowIST > deadlineIST;
   const deadline = activity?.deadline ? new Date(activity.deadline) : null;
-  const now = new Date();
-  const isOverdue = deadline && deadline < now && !isCompleted;
-  const isLate = submission?.status === 'LATE';
+  const isOverdue = isExpired;
+  const isLate = false; // Deadlines strictly enforced now
 
   if (loading) {
     return (
@@ -189,17 +232,52 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
               </button>
             </div>
             <div className="edit-form">
+              {activity.is_proof_required && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', fontWeight: 600, marginBottom: '0.5rem' }}>
+                    Upload Proof (PDF, JPG, PNG) <span style={{ color: 'red' }}>*</span>
+                  </label>
+                  <input 
+                    type="file" 
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                    style={{ display: 'block', width: '100%', padding: '0.5rem', border: '1px solid var(--border-color)', borderRadius: '4px' }}
+                  />
+                </div>
+              )}
               <p style={{ color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: 1.6 }}>
                 ⚠️ By confirming, you declare that you have genuinely completed{' '}
                 <strong style={{ color: 'var(--text-primary)' }}>{activity.title}</strong>.
                 False declarations may result in disciplinary action.
               </p>
+              {!activity.is_proof_required && (
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={confirmed}
+                      onChange={(e) => setConfirmed(e.target.checked)}
+                      style={{ marginRight: '0.5rem', transform: 'scale(1.2)' }}
+                    />
+                    I confirm I have completed this activity
+                  </label>
+                </div>
+              )}
+              {isExpired && (
+                <p className="text-orange" style={{ marginTop: '-0.75rem', marginBottom: '1.25rem', fontWeight: 500, color: 'red' }}>
+                  Deadline exceeded. You cannot submit this activity.
+                </p>
+              )}
               <div className="modal-actions">
-                <button className="btn-secondary" onClick={() => setConfirmOpen(false)}>
+                <button className="btn-secondary" onClick={() => setConfirmOpen(false)} disabled={submitState === 'submitting'}>
                   Cancel
                 </button>
-                <button className="btn-primary" onClick={handleSubmit}>
-                  Yes, I've completed it
+                <button 
+                  className="btn-primary" 
+                  onClick={handleSubmit} 
+                  disabled={submitState === 'submitting' || isExpired || (activity.is_proof_required ? !proofFile : !confirmed)}
+                >
+                  {submitState === 'submitting' ? 'Submitting...' : "Submit Activity"}
                 </button>
               </div>
             </div>
@@ -302,7 +380,7 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
           )}
 
           {/* Penalty */}
-          {(activity.rules?.late_penalty_hp || activity.rules?.late_penalty_percent) && (
+          {((activity.rules?.late_penalty_hp || 0) > 0 || (activity.rules?.late_penalty_percent || 0) > 0) && (
             <div className="stat-card">
               <div className="stat-icon icon-orange">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -340,6 +418,13 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
                 </svg>
                 You have already submitted this activity.
               </div>
+            ) : isExpired ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'red', fontWeight: 600 }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+                Expired. You cannot submit this activity.
+              </div>
             ) : submitState === 'submitting' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--text-secondary)' }}>
                 <div className="spinner" style={{ width: '1.25rem', height: '1.25rem', borderWidth: '2px' }} />
@@ -349,12 +434,16 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
               <button
                 className="btn-primary"
                 style={{ padding: '0.75rem 2rem', fontSize: '1rem' }}
-                onClick={() => setConfirmOpen(true)}
+                onClick={() => {
+                  setProofFile(null);
+                  setConfirmed(false);
+                  setConfirmOpen(true);
+                }}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '0.5rem' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '0.5rem' }}>
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
-                {isOverdue ? 'Submit (Late)' : "I've Completed This Activity"}
+                I've Completed This Activity
               </button>
             )}
           </div>

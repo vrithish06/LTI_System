@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { validateLtiToken } from '../lti/ltiValidator.js';
 import { syncRosterForCourse } from '../services/bp.service.js';
+import { provisionUser } from '../hp/hpService.js';
 
 /**
  * Controller class for handling LTI Launch endpoints.
@@ -40,6 +41,13 @@ export class LtiController {
             if (context.role === 'Instructor' && context.courseId) {
                 syncRosterForCourse(context.courseId).catch((err: Error) => {
                     console.warn('[NRPS] Background roster sync failed on launch:', err.message);
+                });
+            }
+
+            // Always provision the user (idempotent) so HP balance exists before any submission
+            if (context.userId && context.courseId) {
+                provisionUser(context.userId, context.courseId, context.role).catch((err: Error) => {
+                    console.warn('[Provision] Failed to provision user on launch:', err.message);
                 });
             }
 

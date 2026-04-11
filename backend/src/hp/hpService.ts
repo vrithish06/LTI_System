@@ -30,51 +30,45 @@ async function applyHpChange(
     reason: string | null,
 ): Promise<IHpLedger> {
     await connectDB();
-    const session = await mongoose.startSession();
+    const { BrowniePointModel } = await import('../models/BrowniePoint.js');
+    
+    // Find previous balance to calculate new balance for logging
+    const existing = await BrowniePointModel.findOne({ studentId: user_id, courseId: course_id });
+    const previous_hp = existing ? existing.points : 0;
+    const new_hp = clamp(previous_hp + delta);
+    const actual_delta = new_hp - previous_hp;
 
-    try {
-        let ledgerEntry!: IHpLedger;
-
-        await session.withTransaction(async () => {
-            // 1. Read current balance (inside transaction)
-            const balance = await HpBalanceModel.findOne({ user_id, course_id }).session(session);
-            if (!balance) {
-                throw new Error(
-                    `HP balance not found for user ${user_id} in course ${course_id}. Was the user provisioned?`,
-                );
+    const updated = await BrowniePointModel.findOneAndUpdate(
+        { studentId: user_id, courseId: course_id },
+        {
+            $inc: { points: actual_delta },
+            $push: {
+                history: {
+                    delta: actual_delta,
+                    reason: reason || change_type,
+                    awardedBy: 'System',
+                    awardedAt: new Date(),
+                }
             }
+        },
+        { new: true, upsert: true }
+    );
+    
+    console.log(`[BP Update] user=${user_id} course=${course_id} delta=${actual_delta} previous=${previous_hp} new=${new_hp} reason="${reason}"`);
 
-            const previous_hp = balance.current_hp;
-            const new_hp = clamp(previous_hp + delta);
-
-            // 2. Append to ledger (immutable)
-            const [entry] = await HpLedgerModel.create(
-                [
-                    {
-                        user_id,
-                        course_id,
-                        change_type,
-                        value: Math.abs(delta),
-                        previous_hp,
-                        new_hp,
-                        activity_id: activity_id ?? null,
-                        reason: reason ?? null,
-                    },
-                ],
-                { session },
-            );
-            ledgerEntry = entry;
-
-            // 3. Update cached balance
-            balance.current_hp = new_hp;
-            balance.updated_at = new Date();
-            await balance.save({ session });
-        });
-
-        return ledgerEntry;
-    } finally {
-        await session.endSession();
-    }
+    // Return a shim matching IHpLedger for compatibility with callers like activityService expecting returned entry ID
+    return {
+        _id: updated._id,
+        user_id,
+        course_id,
+        change_type,
+        value: Math.abs(actual_delta),
+        previous_hp,
+        new_hp,
+        activity_id,
+        reason,
+        timestamp: new Date()
+    } as unknown as IHpLedger;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -132,9 +126,10 @@ export async function applyPercentageReward(
     reason?: string,
 ): Promise<IHpLedger> {
     await connectDB();
-    const balance = await HpBalanceModel.findOne({ user_id, course_id });
+    const { BrowniePointModel } = await import('../models/BrowniePoint.js');
+    const balance = await BrowniePointModel.findOne({ studentId: user_id, courseId: course_id });
     if (!balance) throw new Error(`HP balance not found for user ${user_id}`);
-    const value = calculatePercentage(balance.current_hp, percent);
+    const value = calculatePercentage(balance.points, percent);
     return applyReward(user_id, course_id, value, activity_id, reason);
 }
 
@@ -147,9 +142,10 @@ export async function applyPercentagePenalty(
     reason?: string,
 ): Promise<IHpLedger> {
     await connectDB();
-    const balance = await HpBalanceModel.findOne({ user_id, course_id });
+    const { BrowniePointModel } = await import('../models/BrowniePoint.js');
+    const balance = await BrowniePointModel.findOne({ studentId: user_id, courseId: course_id });
     if (!balance) throw new Error(`HP balance not found for user ${user_id}`);
-    const value = calculatePercentage(balance.current_hp, percent);
+    const value = calculatePercentage(balance.points, percent);
     return applyPenalty(user_id, course_id, value, activity_id, reason);
 }
 
@@ -160,6 +156,51 @@ export async function applyPercentagePenalty(
 export async function getHpBalance(user_id: string, course_id: string): Promise<IHpBalance | null> {
     await connectDB();
     return HpBalanceModel.findOne({ user_id, course_id }).lean();
+}
+
+/**
+ * Returns the HP balance, auto-creating it at 1000 HP if not found.
+ * Safe to call from any read path (no transaction needed for reads).
+ */
+export async function getOrCreateHpBalance(user_id: string, course_id: string, role = 'Learner'): Promise<IHpBalance> {
+    await connectDB();
+    const existing = await HpBalanceModel.findOne({ user_id, course_id });
+    if (existing) return existing.toObject() as IHpBalance;
+
+    console.log(`[HP Provision] Creating balance for user=${user_id} course=${course_id}`);
+    await UserModel.findOneAndUpdate(
+        { user_id, course_id },
+        { $setOnInsert: { user_id, course_id, role, created_at: new Date() } },
+        { upsert: true }
+    );
+    const newBalance = await HpBalanceModel.findOneAndUpdate(
+        { user_id, course_id },
+        { $setOnInsert: { user_id, course_id, current_hp: 1000, updated_at: new Date() } },
+        { upsert: true, new: true }
+    );
+    return newBalance!.toObject() as IHpBalance;
+}
+
+/**
+ * Provision a user in the LTI system on LTI launch.
+ * Idempotent — safe to call every launch.
+ */
+export async function provisionUser(user_id: string, course_id: string, role: string): Promise<void> {
+    await connectDB();
+    const ltiRole = role === 'Instructor' ? 'Instructor' : 'Learner';
+    await UserModel.findOneAndUpdate(
+        { user_id, course_id },
+        { $set: { role: ltiRole }, $setOnInsert: { created_at: new Date() } },
+        { upsert: true }
+    );
+    if (ltiRole === 'Learner') {
+        await HpBalanceModel.findOneAndUpdate(
+            { user_id, course_id },
+            { $setOnInsert: { current_hp: 1000, updated_at: new Date() } },
+            { upsert: true }
+        );
+        console.log(`[HP Provision] Ensured HP balance for user=${user_id} course=${course_id}`);
+    }
 }
 
 export async function getHpLedger(user_id: string, course_id: string): Promise<IHpLedger[]> {

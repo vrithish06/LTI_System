@@ -5,6 +5,10 @@ import { ltiController } from '../controllers/lti.controller.js';
 import { examController } from '../controllers/exam.controller.js';
 import { bpController } from '../controllers/bp.controller.js';
 import { activityController } from '../controllers/activity.controller.js';
+import multer from 'multer';
+import { cloudStorageService } from '../utils/cloud-storage.js';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 /**
  * Main application router linking API paths to initialized controller endpoints.
@@ -48,11 +52,26 @@ router.get('/lti/course/:courseId/activities', (req: Request, res: Response) => 
 });
 
 // POST /api/lti/activities/:activityId/submit
-router.post('/lti/activities/:activityId/submit', (req: Request, res: Response) => {
-    return activityController.submitActivity(
-        { ...req, params: { activityId: req.params.activityId } } as any,
-        res
-    );
+router.post('/lti/activities/:activityId/submit', upload.single('proof'), async (req: Request, res: Response) => {
+    try {
+        let proof_url = undefined;
+        if (req.file) {
+            proof_url = await cloudStorageService.uploadActivityProof(
+                req.file.buffer,
+                req.file.originalname,
+                req.file.mimetype,
+                req.body.user_id,
+                req.params.activityId,
+                new Date()
+            );
+        }
+        if (proof_url) {
+            req.body.proof_url = proof_url;
+        }
+        return activityController.submitActivity(req, res);
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to process submission', detail: err.message });
+    }
 });
 
 // PUT /api/lti/activities/:activityId  — instructor updates an activity
@@ -79,12 +98,52 @@ router.get('/lti/submissions/:userId/:courseId', (req: Request, res: Response) =
     );
 });
 
+// GET /api/lti/activities/:activityId/submissions
+router.get('/lti/activities/:activityId/submissions', (req: Request, res: Response) => {
+    return activityController.getSubmissionsForActivity(
+        { ...req, params: { activityId: req.params.activityId } } as any,
+        res
+    );
+});
+
+// GET /api/lti/courseName/:courseId
+router.get('/lti/courseName/:courseId', async (req: Request, res: Response) => {
+    try {
+        const { connectDB } = await import('../db/connection.js');
+        await connectDB();
+        const mongoose = (await import('mongoose')).default;
+        const db = mongoose.connection.db;
+        if (!db) throw new Error('DB not connected');
+        
+        // Find course name from `newcourses` or `courses` natively in Vibe's DB
+        const course = await db.collection('newcourses').findOne({ _id: new mongoose.Types.ObjectId(req.params.courseId) });
+        if (course) {
+            return res.json({ success: true, courseName: course.name || course.title || 'Unknown Course' });
+        }
+        res.json({ success: false, courseName: 'Unknown Course' });
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed', detail: err.message });
+    }
+});
+
 // GET /api/lti/bp/:userId/:courseId  — student's own HP balance
 router.get('/lti/bp/:userId/:courseId', (req: Request, res: Response) => {
     return activityController.getBrowniePointsForStudent(
         { ...req, params: { studentId: req.params.userId, courseId: req.params.courseId } } as any,
         res
     );
+});
+
+// GET /api/lti/proof/:fileId
+router.get('/lti/proof/:fileId', async (req: Request, res: Response) => {
+    try {
+        const { stream, metadata } = await cloudStorageService.downloadProof(req.params.fileId);
+        res.setHeader('Content-Disposition', `inline; filename="${metadata.originalName}"`);
+        res.setHeader('Content-Type', metadata.contentType);
+        stream.pipe(res);
+    } catch (err: any) {
+        res.status(404).json({ error: 'Proof not found', detail: err.message });
+    }
 });
 
 // ─────────────────────────────────────────────────────────────────

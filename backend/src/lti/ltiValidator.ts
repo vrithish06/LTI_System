@@ -11,6 +11,7 @@ export interface LtiContext {
     userEmail: string;
     userName: string;
     courseId: string;
+    courseName?: string;
     courseVersionId: string;
     activityId: string;
     activityTitle: string;
@@ -82,6 +83,7 @@ export async function validateLtiToken(token: string): Promise<LtiContext> {
         userEmail: payload.email as string,
         userName: payload.name as string,
         courseId: context?.label || '',
+        courseName: context?.title || '',
         courseVersionId: context?.id || '',
         activityId: resourceLink?.id || '',
         activityTitle: payload['https://vibe.learning/custom_claims/activity_title'] || resourceLink?.title || '',

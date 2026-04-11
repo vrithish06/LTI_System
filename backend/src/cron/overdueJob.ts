@@ -81,7 +81,7 @@ async function processOverdue(work: OverdueWork): Promise<void> {
                 course_id,
                 r.overdue_penalty_percent,
                 activity_id,
-                `Missed mandatory activity: ${title}`,
+                `Did not complete mandatory activity: ${title}`,
             );
         } else if (r.overdue_penalty_hp) {
             await applyPenalty(
@@ -89,7 +89,7 @@ async function processOverdue(work: OverdueWork): Promise<void> {
                 course_id,
                 r.overdue_penalty_hp,
                 activity_id,
-                `Missed mandatory activity: ${title}`,
+                `Did not complete mandatory activity: ${title}`,
             );
         } else {
             // Default fallback: –5% of current balance
@@ -98,7 +98,7 @@ async function processOverdue(work: OverdueWork): Promise<void> {
                 course_id,
                 5,
                 activity_id,
-                `Missed mandatory activity (default –5%): ${title}`,
+                `Did not complete mandatory activity: ${title}`,
             );
         }
 

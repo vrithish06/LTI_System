@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 import type { LtiContext } from '../App';
 import BrowniePointsDashboard from './BrowniePointsDashboard';
 import StudentBPDashboard from './StudentBPDashboard';
@@ -23,6 +24,15 @@ export default function Dashboard({ context }: Props) {
   const [activeSection, setActiveSection] = useState<Section>(defaultSection);
   const [selectedActivity, setSelectedActivity] = useState<ActivityRecord | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false); // for mobile
+  const [courseName, setCourseName] = useState(context.courseName || '');
+
+  useEffect(() => {
+    if (!courseName && context.courseId) {
+      axios.get(`/api/lti/courseName/${context.courseId}`).then(res => {
+        if (res.data.success && res.data.courseName) setCourseName(res.data.courseName);
+      }).catch(console.error);
+    }
+  }, [courseName, context.courseId]);
 
   const handleOpenActivity = (activity: ActivityRecord) => {
     setSelectedActivity(activity);
@@ -177,7 +187,6 @@ export default function Dashboard({ context }: Props) {
       {/* Sidebar */}
       <aside className={`dashboard-sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
         <div className="sidebar-brand">
-          <div className="sidebar-brand-icon">🍪</div>
           <div className="sidebar-brand-text">
             <span className="sidebar-brand-name">LTI Dashboard</span>
           </div>
@@ -209,7 +218,9 @@ export default function Dashboard({ context }: Props) {
         <div className="sidebar-footer">
           <div className="sidebar-course-info">
             <span className="sidebar-course-label">Course</span>
-            <span className="sidebar-course-id">{context.courseId?.slice(0, 24) || '—'}</span>
+            <span className="sidebar-course-name" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', marginTop: '4px' }}>
+              {courseName || 'Course Dashboard'}
+            </span>
           </div>
         </div>
       </aside>

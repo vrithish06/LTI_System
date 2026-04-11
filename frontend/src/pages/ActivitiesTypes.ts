@@ -7,6 +7,7 @@ export interface ActivityRecord {
   deadline?: string;
   grace_period?: number;
   is_mandatory?: boolean;
+  is_submitted?: boolean;
   rules?: {
     reward_hp?: number;
     late_penalty_hp?: number;

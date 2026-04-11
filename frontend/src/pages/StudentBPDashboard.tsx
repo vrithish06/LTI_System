@@ -36,11 +36,19 @@ export default function StudentBPDashboard({ context }: Props) {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const { data } = await axios.get(`/api/bp/student/${courseId}/${studentId}`);
-        if (data.success) {
+        const [bpRes, courseRes] = await Promise.allSettled([
+          axios.get(`/api/bp/student/${courseId}/${studentId}`),
+          axios.get(`/api/lti/courseName/${courseId}`)
+        ]);
+
+        if (bpRes.status === 'fulfilled' && bpRes.value.data.success) {
+          const data = bpRes.value.data;
           setRecord(data.record);
           setClassAvg(data.classAvg);
           setTotalStudents(data.totalStudents);
+        }
+        if (courseRes.status === 'fulfilled' && courseRes.value.data.success) {
+          setCourseName(courseRes.value.data.courseName || '');
         }
       } catch (err) {
         console.error('Failed to load BP data', err);
@@ -71,7 +79,7 @@ export default function StudentBPDashboard({ context }: Props) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-primary)' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🍪</div>
+          <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>✨</div>
           <p style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>Loading your Brownie Points...</p>
         </div>
       </div>
@@ -97,8 +105,8 @@ export default function StudentBPDashboard({ context }: Props) {
           width: 44, height: 44, borderRadius: 12,
           background: 'linear-gradient(135deg, #f59e0b, #d97706)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '1.4rem', flexShrink: 0,
-        }}>🍪</div>
+          fontSize: '1.4rem', flexShrink: 0, color: 'white', fontWeight: 'bold'
+        }}>BP</div>
         <div>
           <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>
             My Brownie Points

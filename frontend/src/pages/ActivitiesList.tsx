@@ -20,7 +20,9 @@ export default function ActivitiesList({ context, onOpenActivity }: Props) {
     const fetchActivities = async () => {
       setLoading(true);
       try {
-        const { data } = await axios.get(`/api/lti/course/${courseId}/activities`);
+        const isStudent = context.role === 'Learner';
+        const url = `/api/lti/course/${courseId}/activities${isStudent ? `?userId=${context.userId}` : ''}`;
+        const { data } = await axios.get(url);
         const list: ActivityRecord[] = data.data || data.activities || [];
         setActivities(list);
       } catch (err: any) {
@@ -135,7 +137,16 @@ export default function ActivitiesList({ context, onOpenActivity }: Props) {
                     </svg>
                   </div>
                   <div className="activity-item-content">
-                    <span className="activity-item-title">{activity.title}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className="activity-item-title">{activity.title}</span>
+                      {activity.is_submitted && (
+                        <div style={{ color: '#10b981', display: 'flex', alignItems: 'center' }} title="Submitted">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
                     {deadline && (
                       <span className={`activity-item-deadline ${deadline.isOverdue ? 'overdue' : ''}`}>
                         {deadline.isOverdue ? '⚠ Overdue · ' : ''}

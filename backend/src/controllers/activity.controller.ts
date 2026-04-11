@@ -79,6 +79,7 @@ export class ActivityController {
                 grace_period: Number(gracePeriodDuration) * 60, // convert hours to minutes
                 rules,
                 is_mandatory: mandatory !== false,
+                is_proof_required: body.isProofRequired === true,
             });
 
             // 4. Generate Deep Linking JWT if in deep-linking mode
@@ -111,7 +112,8 @@ export class ActivityController {
     public async getActivitiesByCourse(req: Request, res: Response): Promise<void> {
         try {
             const { courseId } = req.params;
-            const activities = await getActivitiesByCourse(courseId);
+            const userId = req.query.userId as string | undefined;
+            const activities = await getActivitiesByCourse(courseId, userId);
             res.json({ success: true, data: activities });
         } catch (err: any) {
             console.error('[Activity Fetch] Error:', err.message);
@@ -127,7 +129,7 @@ export class ActivityController {
     public async submitActivity(req: Request, res: Response): Promise<void> {
         try {
             const { activityId } = req.params;
-            const { user_id, course_id, score, score_max } = req.body;
+            const { user_id, course_id, score, score_max, proof_url } = req.body;
 
             if (!user_id || !course_id) {
                 res.status(400).json({ error: '`user_id` and `course_id` are required' });
@@ -140,12 +142,21 @@ export class ActivityController {
                 course_id,
                 score,
                 score_max,
+                proof_url,
             });
 
             res.json({ success: true, data: result });
         } catch (err: any) {
-            console.error('[Activity Submit] Error:', err.message);
-            res.status(500).json({ error: 'Failed to submit activity', detail: err.message });
+            const msg: string = err?.message || 'Failed to submit activity';
+            console.error('[Activity Submit] Error:', msg);
+
+            if (msg.includes('Deadline exceeded')) {
+                res.status(403).json({ error: msg });
+            } else if (msg.includes('already submitted')) {
+                res.status(409).json({ error: msg });
+            } else {
+                res.status(500).json({ error: msg });
+            }
         }
     }
 
@@ -165,6 +176,41 @@ export class ActivityController {
     }
 
     /**
+     * GET /api/lti/activities/:activityId/submissions
+     */
+    public async getSubmissionsForActivity(req: Request, res: Response): Promise<void> {
+        try {
+            const { activityId } = req.params;
+            const { SubmissionModel, ActivityModel, UserModel } = await import('../models/index.js');
+            const activity = await ActivityModel.findOne({ activity_id: activityId }).lean();
+            if (!activity) {
+                res.status(404).json({ error: 'Activity not found' });
+                return;
+            }
+
+            const submissions = await SubmissionModel.find({ activity_id: activityId }).lean();
+            const learners = await UserModel.find({ course_id: activity.course_id, role: 'Learner' }).lean();
+
+            const mergedData = learners.map(learner => {
+                const sub = submissions.find(s => s.user_id === learner.user_id);
+                return {
+                    user_id: learner.user_id,
+                    activity_id: activityId,
+                    course_id: activity.course_id,
+                    status: sub ? sub.status : 'Not Submitted',
+                    submitted_at: sub ? sub.submitted_at : null,
+                    proof_url: sub ? sub.proof_url : null,
+                };
+            });
+
+            res.json({ success: true, data: mergedData });
+        } catch (err: any) {
+            console.error('[Activity Submissions Fetch] Error:', err.message);
+            res.status(500).json({ error: 'Failed to fetch activity submissions', detail: err.message });
+        }
+    }
+
+    /**
      * GET /api/bp/:studentId/:courseId
      * Returns the current Brownie Points balance for a specific student in a course.
      * Used by VIBE when `useExternalBP` is enabled.
@@ -172,16 +218,31 @@ export class ActivityController {
     public async getBrowniePointsForStudent(req: Request, res: Response): Promise<void> {
         try {
             const { studentId, courseId } = req.params;
-            const balance = await getHpBalance(studentId, courseId);
+            const { BrowniePointModel } = await import('../models/BrowniePoint.js');
+            const balance = await BrowniePointModel.findOne({ studentId, courseId });
 
             if (!balance) {
-                res.status(404).json({
-                    error: 'No HP record found for this student in this course',
+                res.json({
+                    success: true,
+                    data: {
+                        user_id: studentId,
+                        course_id: courseId,
+                        current_hp: 0,
+                        updated_at: new Date()
+                    }
                 });
                 return;
             }
 
-            res.json({ success: true, data: balance });
+            res.json({ 
+                success: true, 
+                data: {
+                    user_id: studentId,
+                    course_id: courseId,
+                    current_hp: balance.points,
+                    updated_at: new Date()
+                } 
+            });
         } catch (err: any) {
             console.error('[BP Fetch Student] Error:', err.message);
             res.status(500).json({ error: 'Failed to fetch brownie points', detail: err.message });
@@ -215,6 +276,7 @@ export class ActivityController {
                 grace_period: body.gracePeriodDuration !== undefined ? Number(body.gracePeriodDuration) * 60 : undefined,
                 rules: Object.keys(rules).length > 0 ? rules : undefined,
                 is_mandatory: body.mandatory !== undefined ? body.mandatory : undefined,
+                is_proof_required: body.isProofRequired !== undefined ? body.isProofRequired : undefined,
             });
 
             if (!updated) {
