@@ -59,7 +59,7 @@ export class ActivityController {
                 `${courseId.toLowerCase()}-${title.toLowerCase().replace(/\s+/g, '-')}-${Date.now().toString().slice(-4)}`;
 
             // 2. Construct rules object for HP engine
-            const rules = {
+            const rules: any = {
                 reward_hp: Number(rewardValue) || 10,
                 reward_type: rewardType || 'ABSOLUTE',
                 late_penalty_hp: mandatory && penaltyType === 'ABSOLUTE' ? Number(penaltyValue) : 0,
@@ -68,6 +68,12 @@ export class ActivityController {
                 submission_mode: submissionMode || 'IN_PLATFORM',
                 description: description || '',
             };
+
+            // Milestone-specific fields
+            if (activityType === 'VIBE_MILESTONE') {
+                rules.milestone_target_percent = Number(body.milestoneTargetPercent) || 50;
+                rules.milestone_reward_hp = Number(body.milestoneRewardHp) || Number(rewardValue) || 10;
+            }
 
             // 3. Persist in LTI database
             const activity = await registerActivity({

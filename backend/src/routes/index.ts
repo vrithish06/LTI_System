@@ -5,6 +5,7 @@ import { ltiController } from '../controllers/lti.controller.js';
 import { examController } from '../controllers/exam.controller.js';
 import { bpController } from '../controllers/bp.controller.js';
 import { activityController } from '../controllers/activity.controller.js';
+import { checkAndAwardMilestonesForCourse } from '../milestone/milestoneService.js';
 import multer from 'multer';
 import { cloudStorageService } from '../utils/cloud-storage.js';
 
@@ -12,7 +13,6 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 
 /**
  * Main application router linking API paths to initialized controller endpoints.
- * Abides by the Open/Closed Principle: adding new domains only requires new files instead of extending a massive index.
  */
 export const router = Router();
 
@@ -20,6 +20,18 @@ export const router = Router();
 // LTI LAUNCH ROUTES  (called by VIBE backend with shared secret)
 // ─────────────────────────────────────────────────────────────────
 router.post('/launch', ltiController.launch.bind(ltiController));
+
+// ─────────────────────────────────────────────────────────────────
+// MILESTONE ROUTES — manual check trigger (called by instructor UI)
+// ─────────────────────────────────────────────────────────────────
+router.post('/lti/milestone/check/:courseId', async (req: Request, res: Response) => {
+    try {
+        await checkAndAwardMilestonesForCourse(req.params.courseId);
+        res.json({ success: true, message: 'Milestone check complete' });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 
 // ─────────────────────────────────────────────────────────────────
 // QUIZ / EXAM ROUTES
@@ -42,6 +54,19 @@ router.get('/activities/bp/:studentId/:courseId', activityController.getBrownieP
 // ActivityDetail.tsx, StudentBPDashboard.tsx, etc. use these paths.
 // No shared secret is required; they rely on the LTI JWT via /api/launch.
 // ─────────────────────────────────────────────────────────────────
+
+// GET /api/lti/courseName/:courseId
+router.get('/lti/courseName/:courseId', async (req: Request, res: Response) => {
+    try {
+        const fetchResponse = await fetch(`${process.env.VIBE_BASE_URL || 'http://localhost:3141'}/api/lti/nrps/${req.params.courseId}`, {
+            headers: { 'x-lti-secret': process.env.LTI_SHARED_SECRET || 'vibe-lti-shared-secret-change-in-production' }
+        });
+        const data = await fetchResponse.json();
+        res.json({ success: true, courseName: data.courseName });
+    } catch (err: any) {
+        res.json({ success: false, error: err.message });
+    }
+});
 
 // GET /api/lti/course/:courseId/activities
 router.get('/lti/course/:courseId/activities', (req: Request, res: Response) => {

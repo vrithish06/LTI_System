@@ -8,10 +8,15 @@ export interface ActivityRecord {
   grace_period?: number;
   is_mandatory?: boolean;
   is_submitted?: boolean;
+  created_at?: string;
+  updated_at?: string;
   rules?: {
     reward_hp?: number;
     late_penalty_hp?: number;
     late_penalty_percent?: number;
     score_to_hp_multiplier?: number;
+    // VIBE_MILESTONE specific
+    milestone_target_percent?: number;
+    milestone_reward_hp?: number;
   };
 }

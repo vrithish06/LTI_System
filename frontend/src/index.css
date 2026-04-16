@@ -1007,6 +1007,210 @@ textarea.vibe-input { resize: vertical; min-height: 70px; }
 .icon-red { background: var(--error-bg); color: var(--error); }
 
 /* ════════════════════════════════════════════
+   STUDENT ACTIVITIES — TAB LAYOUT
+   ════════════════════════════════════════════ */
+
+/* Page header */
+.al-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding-bottom: 14px; border-bottom: 1.5px solid var(--border);
+  margin-bottom: 4px;
+}
+.al-header-left { display: flex; align-items: center; gap: 12px; }
+
+/* Progress bar */
+.al-progress-wrap { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.al-progress-track {
+  width: 120px; height: 7px; border-radius: var(--radius-full);
+  background: var(--bg-secondary); border: 1px solid var(--border); overflow: hidden;
+}
+.al-progress-fill {
+  height: 100%; border-radius: var(--radius-full);
+  background: linear-gradient(90deg, hsl(142, 55%, 50%), hsl(160, 60%, 45%));
+  transition: width 0.6s ease;
+}
+.al-progress-label { font-size: 0.75rem; font-weight: 700; color: hsl(142, 55%, 38%); white-space: nowrap; }
+
+/* ── Tab bar ── */
+.al-tab-bar {
+  display: flex; gap: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+  margin-bottom: 10px;
+}
+
+.al-tab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 14px;
+  border: none; border-radius: calc(var(--radius) - 2px);
+  background: transparent; color: var(--text-secondary);
+  font-size: 0.82rem; font-weight: 600; font-family: 'Poppins', sans-serif;
+  cursor: pointer; transition: all 0.18s;
+}
+.al-tab:hover:not(.al-tab-active) { background: var(--bg-card); color: var(--text-primary); }
+
+.al-tab-active {
+  background: var(--primary-bg);
+  color: var(--primary-dark);
+  box-shadow: 0 1px 4px hsla(38, 80%, 50%, 0.18);
+}
+.al-tab-done-active {
+  background: hsl(142, 50%, 93%);
+  color: hsl(142, 60%, 30%);
+  box-shadow: 0 1px 4px hsla(142, 55%, 45%, 0.18);
+}
+
+.al-tab-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: var(--bg-card); color: var(--text-muted);
+  font-size: 0.68rem; font-weight: 700;
+  border: 1px solid var(--border);
+}
+.al-tab-count-active      { background: var(--primary); color: var(--text-primary); border-color: transparent; }
+.al-tab-count-done-active { background: hsl(142, 55%, 48%); color: #fff; border-color: transparent; }
+
+/* ── Tab panel wrapper ── */
+.al-tab-panel { animation: slideUp 0.18s ease; }
+
+/* Empty state inside tab */
+.al-tab-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 40px 24px; text-align: center;
+  color: var(--text-muted); font-size: 0.88rem;
+}
+.al-tab-empty-icon { font-size: 2.2rem; }
+
+/* ── Pending card stripe ── */
+.al-status-stripe {
+  width: 4px; align-self: stretch; flex-shrink: 0; border-radius: 2px 0 0 2px;
+}
+.al-stripe-amber { background: var(--primary); }
+.al-stripe-green { background: hsl(142, 55%, 48%); }
+
+/* Pending card wrapper (existing .activity-list-item styles apply) */
+.al-card-pending {}
+
+/* ── Completed list ── */
+.al-completed-list { display: flex; flex-direction: column; gap: 6px; list-style: none; }
+
+/* Completed card outer */
+.al-done-card {
+  background: var(--bg-card);
+  border: 1px solid hsl(142, 40%, 84%);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: box-shadow 0.15s;
+}
+.al-done-card:hover { box-shadow: 0 2px 10px hsla(142, 50%, 45%, 0.12); }
+
+/* Clickable header row */
+.al-done-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 16px; cursor: pointer;
+  transition: background 0.12s;
+}
+.al-done-row:hover { background: hsl(142, 50%, 97%); }
+
+/* Green icon */
+.al-done-icon {
+  color: hsl(142, 55%, 40%);
+  background: hsl(142, 50%, 93%) !important;
+  border-color: hsl(142, 45%, 80%) !important;
+}
+
+/* Submitted label */
+.al-submitted-label {
+  display: inline-block;
+  font-size: 0.68rem; font-weight: 600; color: hsl(142, 58%, 32%);
+  background: hsl(142, 50%, 93%); border: 1px solid hsl(142, 42%, 80%);
+  border-radius: var(--radius-full); padding: 1px 8px;
+}
+
+/* Score badge */
+.al-score-badge {
+  display: inline-block;
+  font-size: 0.68rem; font-weight: 700; color: hsl(220, 60%, 40%);
+  background: hsl(220, 70%, 95%); border: 1px solid hsl(220, 55%, 82%);
+  border-radius: var(--radius-full); padding: 1px 8px;
+}
+
+/* Expand chevron button area */
+.al-expand-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: var(--radius-sm);
+  color: var(--text-muted); flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.al-done-row:hover .al-expand-btn { background: hsl(142, 45%, 90%); color: hsl(142, 60%, 30%); }
+
+/* ── Expanded submission detail ── */
+.al-submission-detail {
+  padding: 14px 16px 16px;
+  border-top: 1px solid hsl(142, 40%, 88%);
+  background: hsl(142, 50%, 98%);
+  animation: slideDown 0.18s ease;
+}
+
+.al-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.al-detail-tile {
+  display: flex; flex-direction: column; gap: 3px;
+  background: var(--bg-card);
+  border: 1px solid hsl(142, 35%, 86%);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.al-detail-full { grid-column: 1 / -1; }
+
+.al-detail-label {
+  font-size: 0.63rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text-muted);
+}
+.al-detail-value { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); }
+.al-val-ok   { color: hsl(142, 58%, 32%); }
+.al-val-late { color: hsl(32, 85%, 38%); }
+
+/* Proof link */
+.al-proof-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.8rem; font-weight: 600;
+  color: hsl(220, 65%, 45%);
+  text-decoration: none; margin-top: 4px;
+}
+.al-proof-link:hover { text-decoration: underline; color: hsl(220, 65%, 35%); }
+
+/* "Open Activity Page" secondary button */
+.al-view-detail-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 14px;
+  background: transparent;
+  border: 1.5px solid hsl(142, 45%, 75%);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem; font-weight: 600;
+  font-family: 'Poppins', sans-serif;
+  color: hsl(142, 55%, 35%); cursor: pointer;
+  transition: all 0.15s;
+}
+.al-view-detail-btn:hover { background: hsl(142, 50%, 93%); border-color: hsl(142, 55%, 60%); }
+
+@media (max-width: 480px) {
+  .al-progress-track { width: 80px; }
+  .al-header { flex-wrap: wrap; }
+  .al-tab { padding: 7px 8px; font-size: 0.75rem; }
+  .al-detail-grid { grid-template-columns: 1fr 1fr; }
+}
+
+
+/* ════════════════════════════════════════════
    INSTRUCTOR ACTIVITIES MANAGER
    ════════════════════════════════════════════ */
 .ia-manager { display: flex; flex-direction: column; gap: 16px; padding: 4px 0; animation: slideUp 0.2s ease; }
@@ -1086,6 +1290,124 @@ textarea.ia-input { resize: vertical; min-height: 56px; }
 .ia-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .ia-cancel-btn { padding: 8px 14px; background: transparent; color: var(--text-muted); border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm); font-size: 0.82rem; font-weight: 600; font-family: 'Poppins', sans-serif; cursor: pointer; transition: all 0.15s; }
 .ia-cancel-btn:hover { background: var(--bg-secondary); color: var(--text-secondary); }
+
+/* ── Timestamp badge ── */
+.ia-timestamp { background: hsl(220, 20%, 96%); color: hsl(220, 15%, 50%); border-color: hsl(220, 20%, 88%); font-style: italic; }
+
+/* ── Filter / Sort Toolbar ── */
+.ia-toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.ia-search-wrap {
+  position: relative; flex: 1 1 180px; min-width: 150px;
+}
+.ia-search-icon {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); pointer-events: none;
+}
+.ia-search-input {
+  width: 100%; padding: 7px 32px 7px 32px;
+  border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-card); font-size: 0.82rem;
+  font-family: 'Poppins', sans-serif; color: var(--text-primary);
+  outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ia-search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-ring); }
+.ia-search-clear {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer; font-size: 0.75rem;
+  color: var(--text-muted); padding: 2px 4px; line-height: 1;
+}
+.ia-search-clear:hover { color: var(--text-primary); }
+
+.ia-sort-group { display: flex; align-items: center; gap: 4px; }
+
+.ia-select {
+  padding: 7px 10px;
+  border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-card); font-size: 0.8rem;
+  font-family: 'Poppins', sans-serif; color: var(--text-primary);
+  outline: none; cursor: pointer; transition: border-color 0.15s;
+}
+.ia-select:focus { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-ring); }
+
+.ia-sort-dir-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-card); color: var(--text-secondary);
+  cursor: pointer; transition: all 0.15s;
+}
+.ia-sort-dir-btn:hover { border-color: var(--primary); color: var(--primary-dark); background: var(--primary-bg); }
+
+.ia-filter-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 12px;
+  border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-card); font-size: 0.8rem; font-weight: 600;
+  font-family: 'Poppins', sans-serif; color: var(--text-secondary);
+  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.ia-filter-btn:hover { border-color: var(--primary); color: var(--primary-dark); background: var(--primary-bg); }
+.ia-filter-btn-active { border-color: var(--primary); color: var(--primary-dark); background: var(--primary-bg); }
+
+.ia-filter-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  background: var(--primary); color: var(--text-primary);
+  border-radius: var(--radius-full); font-size: 0.65rem; font-weight: 800;
+}
+
+.ia-clear-btn {
+  padding: 7px 10px; background: none;
+  border: 1.5px solid var(--error-border); border-radius: var(--radius-sm);
+  font-size: 0.78rem; font-weight: 600; font-family: 'Poppins', sans-serif;
+  color: var(--error); cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.ia-clear-btn:hover { background: var(--error-bg); }
+
+/* ── Advanced filter panel ── */
+.ia-filter-panel {
+  background: hsl(42, 100%, 98%);
+  border: 1px solid hsl(38, 70%, 88%);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  animation: slideDown 0.18s ease;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ia-filter-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+
+.ia-filter-field { display: flex; flex-direction: column; gap: 4px; min-width: 130px; flex: 1; }
+
+.ia-filter-label {
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text-muted);
+}
+
+/* Link-style clear button inside empty state */
+.ia-link-btn {
+  background: none; border: none; padding: 0;
+  color: var(--primary-dark); font-weight: 600; cursor: pointer;
+  text-decoration: underline; font-size: inherit; font-family: inherit;
+}
+.ia-link-btn:hover { color: var(--primary); }
+
+@media (max-width: 600px) {
+  .ia-toolbar { flex-direction: column; align-items: stretch; }
+  .ia-sort-group { justify-content: space-between; }
+  .ia-filter-row { flex-direction: column; }
+  .ia-filter-field { min-width: 100%; }
+}
+
 
 /* ════════════════════════════════════════════
    ACTIVITY CREATOR FORM

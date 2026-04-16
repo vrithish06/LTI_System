@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import type { LtiContext } from '../App';
 import type { ActivityRecord } from './ActivitiesTypes';
@@ -6,7 +6,7 @@ import SubmissionsViewer from './SubmissionsViewer';
 
 interface Props {
   context: LtiContext;
-  onAddActivity: () => void; // navigate to Add Activity tab
+  onAddActivity: () => void;
 }
 
 interface EditFormData {
@@ -24,6 +24,9 @@ interface EditFormData {
   gracePeriodDuration: string;
   isProofRequired: boolean;
 }
+
+type SortKey = 'updated_at' | 'created_at' | 'title' | 'deadline';
+type SortDir = 'desc' | 'asc';
 
 const toLocalDatetimeString = (iso?: string) => {
   if (!iso) return '';
@@ -48,23 +51,65 @@ const activityToForm = (a: ActivityRecord): EditFormData => ({
   isProofRequired: a.is_proof_required ?? false,
 });
 
+const fmtDate = (iso?: string) => {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+};
+
+const fmtRelative = (iso?: string) => {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins  = Math.floor(diff / 60000);
+  const hrs   = Math.floor(diff / 3600000);
+  const days  = Math.floor(diff / 86400000);
+  if (mins < 1)  return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  if (hrs  < 24) return `${hrs}h ago`;
+  if (days < 7)  return `${days}d ago`;
+  return fmtDate(iso) ?? '';
+};
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'updated_at', label: 'Last Edited' },
+  { value: 'created_at', label: 'Date Created' },
+  { value: 'title',      label: 'Name (A–Z)' },
+  { value: 'deadline',   label: 'Deadline' },
+];
+
+const TYPE_OPTIONS = ['All', 'ASSIGNMENT', 'LTI_TOOL', 'VIBE_MILESTONE', 'EXTERNAL_IMPORT'];
+const MANDATORY_OPTIONS = ['All', 'Required', 'Optional'];
+
 export default function InstructorActivitiesManager({ context, onAddActivity }: Props) {
-  const [activities, setActivities] = useState<ActivityRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<EditFormData | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [activities, setActivities]   = useState<ActivityRecord[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState('');
+  const [editingId, setEditingId]     = useState<string | null>(null);
+  const [editForm, setEditForm]       = useState<EditFormData | null>(null);
+  const [saving, setSaving]           = useState(false);
+  const [deletingId, setDeletingId]   = useState<string | null>(null);
   const [viewingSubmissionsActivity, setViewingSubmissionsActivity] = useState<ActivityRecord | null>(null);
 
+  // ── Filter / Sort state ──────────────────────────────────────────────────
+  const [search,       setSearch]       = useState('');
+  const [filterType,   setFilterType]   = useState('All');
+  const [filterMand,   setFilterMand]   = useState('All');
+  const [dateFrom,     setDateFrom]     = useState('');   // ISO date string (date-only)
+  const [dateTo,       setDateTo]       = useState('');
+  const [dateField,    setDateField]    = useState<'created_at' | 'updated_at'>('updated_at');
+  const [sortKey,      setSortKey]      = useState<SortKey>('updated_at');
+  const [sortDir,      setSortDir]      = useState<SortDir>('desc');
+  const [filtersOpen,  setFiltersOpen]  = useState(false);
+
+  // ── Data fetch ───────────────────────────────────────────────────────────
   const fetchActivities = useCallback(async () => {
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
       const { data } = await axios.get(`/api/lti/course/${context.courseId}/activities`);
       setActivities(data.data || data.activities || []);
-    } catch (err: any) {
+    } catch {
       setError('Failed to load activities.');
     } finally {
       setLoading(false);
@@ -73,18 +118,84 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
 
   useEffect(() => { fetchActivities(); }, [fetchActivities]);
 
-  const startEdit = (a: ActivityRecord) => {
-    setEditingId(a.activity_id);
-    setEditForm(activityToForm(a));
+  // ── Derived / filtered list ───────────────────────────────────────────────
+  const displayed = useMemo(() => {
+    let list = [...activities];
+
+    // Search by title
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(a => a.title.toLowerCase().includes(q));
+    }
+
+    // Type filter
+    if (filterType !== 'All') {
+      list = list.filter(a => a.type === filterType);
+    }
+
+    // Mandatory filter
+    if (filterMand === 'Required') list = list.filter(a => a.is_mandatory);
+    if (filterMand === 'Optional') list = list.filter(a => !a.is_mandatory);
+
+    // Date range filter (against chosen date field)
+    if (dateFrom) {
+      const from = new Date(dateFrom).getTime();
+      list = list.filter(a => {
+        const ts = a[dateField] ? new Date(a[dateField]!).getTime() : 0;
+        return ts >= from;
+      });
+    }
+    if (dateTo) {
+      const to = new Date(dateTo).getTime() + 86399999; // inclusive end-of-day
+      list = list.filter(a => {
+        const ts = a[dateField] ? new Date(a[dateField]!).getTime() : Infinity;
+        return ts <= to;
+      });
+    }
+
+    // Sort
+    list.sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === 'title') {
+        cmp = a.title.localeCompare(b.title);
+      } else if (sortKey === 'deadline') {
+        const ta = a.deadline ? new Date(a.deadline).getTime() : Infinity;
+        const tb = b.deadline ? new Date(b.deadline).getTime() : Infinity;
+        cmp = ta - tb;
+      } else {
+        const ta = a[sortKey] ? new Date(a[sortKey]!).getTime() : 0;
+        const tb = b[sortKey] ? new Date(b[sortKey]!).getTime() : 0;
+        cmp = ta - tb;
+      }
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+
+    return list;
+  }, [activities, search, filterType, filterMand, dateFrom, dateTo, dateField, sortKey, sortDir]);
+
+  const activeFilterCount = [
+    search.trim() !== '',
+    filterType !== 'All',
+    filterMand !== 'All',
+    dateFrom !== '',
+    dateTo !== '',
+  ].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setSearch(''); setFilterType('All'); setFilterMand('All');
+    setDateFrom(''); setDateTo(''); setDateField('updated_at');
+    setSortKey('updated_at'); setSortDir('desc');
   };
 
+  // ── Edit handlers ─────────────────────────────────────────────────────────
+  const startEdit  = (a: ActivityRecord) => { setEditingId(a.activity_id); setEditForm(activityToForm(a)); };
   const cancelEdit = () => { setEditingId(null); setEditForm(null); };
 
   const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target as any;
     setEditForm(prev => prev ? {
       ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
     } : prev);
   };
 
@@ -107,8 +218,7 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
         gracePeriodDuration: Number(editForm.gracePeriodDuration),
         isProofRequired: editForm.isProofRequired,
       });
-      setEditingId(null);
-      setEditForm(null);
+      setEditingId(null); setEditForm(null);
       await fetchActivities();
     } catch (err: any) {
       alert(err?.response?.data?.error || 'Failed to save changes.');
@@ -130,20 +240,29 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
     }
   };
 
-  const formatDeadline = (iso?: string) => {
-    if (!iso) return 'No deadline';
-    const d = new Date(iso);
+  const formatDeadline = (a: ActivityRecord) => {
+    if (a.type === 'VIBE_MILESTONE') return null; // milestones never have a deadline
+    if (!a.deadline) return 'No deadline';
+    const d = new Date(a.deadline);
     const isOverdue = d < new Date();
-    return { label: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }), isOverdue };
+    return {
+      label: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      isOverdue,
+    };
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="ia-manager">
       {/* Header */}
       <div className="ia-header">
         <div>
           <h2 className="ia-title">Manage Activities</h2>
-          <p className="ia-subtitle">{loading ? 'Loading…' : `${activities.length} activit${activities.length === 1 ? 'y' : 'ies'} in this course`}</p>
+          <p className="ia-subtitle">
+            {loading
+              ? 'Loading…'
+              : `${displayed.length} of ${activities.length} activit${activities.length === 1 ? 'y' : 'ies'}`}
+          </p>
         </div>
         <button className="ia-add-btn" onClick={onAddActivity}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -153,23 +272,148 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
         </button>
       </div>
 
+      {/* ── Filter / Sort Toolbar ── */}
+      <div className="ia-toolbar">
+        {/* Search */}
+        <div className="ia-search-wrap">
+          <svg className="ia-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            className="ia-search-input"
+            placeholder="Search by name…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button className="ia-search-clear" onClick={() => setSearch('')} title="Clear">✕</button>
+          )}
+        </div>
+
+        {/* Sort key + direction */}
+        <div className="ia-sort-group">
+          <select
+            className="ia-select"
+            value={sortKey}
+            onChange={e => setSortKey(e.target.value as SortKey)}
+            title="Sort by"
+          >
+            {SORT_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <button
+            className="ia-sort-dir-btn"
+            title={sortDir === 'desc' ? 'Newest first' : 'Oldest first'}
+            onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+          >
+            {sortDir === 'desc'
+              ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+              : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+            }
+          </button>
+        </div>
+
+        {/* Advanced filters toggle */}
+        <button
+          className={`ia-filter-btn ${filtersOpen ? 'ia-filter-btn-active' : ''}`}
+          onClick={() => setFiltersOpen(o => !o)}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+          </svg>
+          Filters
+          {activeFilterCount > 0 && <span className="ia-filter-badge">{activeFilterCount}</span>}
+        </button>
+
+        {activeFilterCount > 0 && (
+          <button className="ia-clear-btn" onClick={clearFilters} title="Clear all filters">
+            Clear all
+          </button>
+        )}
+      </div>
+
+      {/* ── Advanced Filter Panel ── */}
+      {filtersOpen && (
+        <div className="ia-filter-panel">
+          <div className="ia-filter-row">
+            {/* Activity Type */}
+            <div className="ia-filter-field">
+              <label className="ia-filter-label">Type</label>
+              <select className="ia-select" value={filterType} onChange={e => setFilterType(e.target.value)}>
+                {TYPE_OPTIONS.map(t => (
+                  <option key={t} value={t}>{t === 'All' ? 'All Types' : t.replace('_', ' ')}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Mandatory */}
+            <div className="ia-filter-field">
+              <label className="ia-filter-label">Status</label>
+              <select className="ia-select" value={filterMand} onChange={e => setFilterMand(e.target.value)}>
+                {MANDATORY_OPTIONS.map(m => (
+                  <option key={m} value={m}>{m === 'All' ? 'All Activities' : m}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Date field to filter on */}
+            <div className="ia-filter-field">
+              <label className="ia-filter-label">Filter Date By</label>
+              <select className="ia-select" value={dateField} onChange={e => setDateField(e.target.value as any)}>
+                <option value="updated_at">Last Edited</option>
+                <option value="created_at">Date Created</option>
+              </select>
+            </div>
+
+            {/* Date From */}
+            <div className="ia-filter-field">
+              <label className="ia-filter-label">From</label>
+              <input
+                type="date"
+                className="ia-select"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+              />
+            </div>
+
+            {/* Date To */}
+            <div className="ia-filter-field">
+              <label className="ia-filter-label">To</label>
+              <input
+                type="date"
+                className="ia-select"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Error */}
       {error && <div className="ia-error">{error}</div>}
 
       {/* Loading */}
       {loading ? (
         <div className="ia-loading"><div className="spinner" style={{ width: 28, height: 28, borderWidth: 2 }} /><span>Loading activities…</span></div>
-      ) : activities.length === 0 ? (
+      ) : displayed.length === 0 ? (
         <div className="ia-empty">
-          <div className="ia-empty-icon">📋</div>
-          <p>No activities yet. Click <strong>Add Activity</strong> to create one.</p>
+          <div className="ia-empty-icon">{activities.length === 0 ? '📋' : '🔍'}</div>
+          <p>
+            {activities.length === 0
+              ? <>No activities yet. Click <strong>Add Activity</strong> to create one.</>
+              : <>No activities match your filters. <button className="ia-link-btn" onClick={clearFilters}>Clear filters</button></>}
+          </p>
         </div>
       ) : (
         <div className="ia-list">
-          {activities.map(a => {
-            const dl = formatDeadline(a.deadline);
-            const isEditing = editingId === a.activity_id;
+          {displayed.map(a => {
+            const dl       = formatDeadline(a);
+            const isMilestone = a.type === 'VIBE_MILESTONE';
+            const isEditing  = editingId === a.activity_id;
             const isDeleting = deletingId === a.activity_id;
+            const lastEdited = a.updated_at || a.created_at;
 
             return (
               <div key={a.activity_id} className={`ia-card ${isEditing ? 'ia-card-editing' : ''}`}>
@@ -185,16 +429,30 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
                     <div className="ia-row-content">
                       <span className="ia-row-title">{a.title}</span>
                       <div className="ia-row-meta">
-                        {typeof dl === 'string' ? (
-                          <span className="ia-meta-tag">{dl}</span>
+                        {/* Deadline tag — hidden for milestones */}
+                        {isMilestone ? (
+                          <span className="ia-meta-tag" style={{ background: 'hsl(38,80%,92%)', color: 'hsl(38,60%,35%)', fontWeight: 600 }}>
+                            🎯 {(a.rules as any)?.milestone_target_percent ?? 50}% completion
+                          </span>
                         ) : (
-                          <span className={`ia-meta-tag ${dl.isOverdue ? 'ia-overdue' : ''}`}>
-                            {dl.isOverdue ? '⚠ Overdue · ' : ''}{dl.label}
+                          dl === null ? null :
+                          typeof dl === 'string' ? (
+                            <span className="ia-meta-tag">{dl}</span>
+                          ) : (
+                            <span className={`ia-meta-tag ${dl.isOverdue ? 'ia-overdue' : ''}`}>
+                              {dl.isOverdue ? '⚠ Overdue · ' : ''}{dl.label}
+                            </span>
+                          )
+                        )}
+                        <span className="ia-meta-tag ia-type">{a.type.replace('_', ' ')}</span>
+                        <span className={`ia-meta-tag ${a.is_mandatory ? 'ia-req' : 'ia-opt'}`}>{a.is_mandatory ? 'Required' : 'Optional'}</span>
+                        <span className="ia-meta-tag">🏆 {isMilestone ? ((a.rules as any)?.milestone_reward_hp ?? (a.rules as any)?.reward_hp ?? 0) : ((a.rules as any)?.reward_hp ?? 0)} BP</span>
+                        {lastEdited && (
+                          <span className="ia-meta-tag ia-timestamp" title={fmtDate(lastEdited) ?? ''}>
+                            {a.updated_at && a.updated_at !== a.created_at ? '✏ ' : '🕐 '}
+                            {fmtRelative(lastEdited)}
                           </span>
                         )}
-                        <span className="ia-meta-tag ia-type">{a.type}</span>
-                        <span className={`ia-meta-tag ${a.is_mandatory ? 'ia-req' : 'ia-opt'}`}>{a.is_mandatory ? 'Required' : 'Optional'}</span>
-                        <span className="ia-meta-tag">🏆 {(a.rules as any)?.reward_hp ?? 0} BP</span>
                       </div>
                     </div>
                     <div className="ia-row-actions">
@@ -331,6 +589,7 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
           })}
         </div>
       )}
+
       {viewingSubmissionsActivity && (
         <SubmissionsViewer
           context={context}

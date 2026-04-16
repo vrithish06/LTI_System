@@ -107,6 +107,7 @@ export async function updateActivity(activity_id: string, updates: Partial<{
     if (updates.rules !== undefined) setFields.rules = updates.rules;
     if (updates.is_mandatory !== undefined) setFields.is_mandatory = updates.is_mandatory;
     if (updates.is_proof_required !== undefined) setFields.is_proof_required = updates.is_proof_required;
+    setFields.updated_at = new Date();
     return ActivityModel.findOneAndUpdate({ activity_id }, { $set: setFields }, { new: true });
 }
 

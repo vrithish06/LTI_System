@@ -9,6 +9,7 @@ import {
     type ActivityRules,
 } from '../models/index.js';
 import { applyPenalty, applyPercentagePenalty } from '../hp/hpService.js';
+import { runMilestoneCron } from '../milestone/milestoneService.js';
 
 interface OverdueWork {
     user_id: string;
@@ -28,33 +29,29 @@ async function findOverdueCandidates(): Promise<OverdueWork[]> {
 
     const now = new Date();
 
-    // All mandatory activities whose effective deadline has passed
     const overdueActivities = await ActivityModel.find({
         is_mandatory: true,
-        deadline: { $ne: null, $lt: now },   // rough filter; grace checked below
+        deadline: { $ne: null, $lt: now },
+        type: { $ne: 'VIBE_MILESTONE' }, // milestones are progress-based, never overdue
     });
 
     const candidates: OverdueWork[] = [];
 
     for (const activity of overdueActivities) {
-        // Check effective deadline including grace period
         const graceEnd = new Date(
             activity.deadline!.getTime() + (activity.grace_period ?? 0) * 60_000,
         );
-        if (now <= graceEnd) continue;   // still within grace — skip
+        if (now <= graceEnd) continue;
 
-        // All learners enrolled in this course
         const learners = await UserModel.find({ course_id: activity.course_id, role: 'Learner' });
 
         for (const learner of learners) {
             const user_id = learner.user_id;
             const activity_id = activity.activity_id;
 
-            // Already submitted?
             const hasSubmission = await SubmissionModel.exists({ user_id, activity_id });
             if (hasSubmission) continue;
 
-            // Already penalized?
             const alreadyProcessed = await ProcessedOverdueModel.exists({ user_id, activity_id });
             if (alreadyProcessed) continue;
 
@@ -65,10 +62,6 @@ async function findOverdueCandidates(): Promise<OverdueWork[]> {
     return candidates;
 }
 
-/**
- * Applies overdue penalty for a single (user, activity) pair and marks it
- * as processed so it is never double-applied.
- */
 async function processOverdue(work: OverdueWork): Promise<void> {
     const { user_id, course_id, activity } = work;
     const { activity_id, title, rules } = activity;
@@ -76,49 +69,25 @@ async function processOverdue(work: OverdueWork): Promise<void> {
 
     try {
         if (r.overdue_penalty_percent) {
-            await applyPercentagePenalty(
-                user_id,
-                course_id,
-                r.overdue_penalty_percent,
-                activity_id,
-                `Did not complete mandatory activity: ${title}`,
-            );
+            await applyPercentagePenalty(user_id, course_id, r.overdue_penalty_percent, activity_id, `Did not complete mandatory activity: ${title}`);
         } else if (r.overdue_penalty_hp) {
-            await applyPenalty(
-                user_id,
-                course_id,
-                r.overdue_penalty_hp,
-                activity_id,
-                `Did not complete mandatory activity: ${title}`,
-            );
+            await applyPenalty(user_id, course_id, r.overdue_penalty_hp, activity_id, `Did not complete mandatory activity: ${title}`);
         } else {
-            // Default fallback: –5% of current balance
-            await applyPercentagePenalty(
-                user_id,
-                course_id,
-                5,
-                activity_id,
-                `Did not complete mandatory activity: ${title}`,
-            );
+            await applyPercentagePenalty(user_id, course_id, 5, activity_id, `Did not complete mandatory activity: ${title}`);
         }
 
-        // Mark processed — insertOne with unique index ensures idempotency
         await ProcessedOverdueModel.create({ user_id, activity_id });
-
         console.log(`[Cron] ✓ Penalty applied: user=${user_id} activity=${activity_id}`);
     } catch (err: any) {
-        // Duplicate key = already processed by a concurrent run — safe to ignore
         if (err.code === 11000) return;
         console.error(`[Cron] ✗ Failed for user=${user_id} activity=${activity_id}:`, err.message);
     }
 }
 
-/** Run the overdue scan immediately (also exported for manual trigger). */
 export async function runOverdueJob(): Promise<void> {
     console.log(`[Cron] Overdue scan started at ${new Date().toISOString()}`);
     const candidates = await findOverdueCandidates();
     console.log(`[Cron] Found ${candidates.length} overdue candidate(s)`);
-    // Process sequentially to avoid session conflicts
     for (const c of candidates) {
         await processOverdue(c);
     }
@@ -126,15 +95,18 @@ export async function runOverdueJob(): Promise<void> {
 }
 
 /**
- * Register the cron schedule. Default: every minute.
- * Pass '0 * * * *' for hourly in production.
+ * Register all cron schedules.
+ * Default: every 5 minutes — overdue penalties + milestone BP checks.
  */
-export function startCronJobs(schedule: string = '* * * * *'): void {
-    console.log(`[Cron] Scheduling overdue job: "${schedule}"`);
+export function startCronJobs(schedule: string = '*/5 * * * *'): void {
+    console.log(`[Cron] Scheduling jobs: "${schedule}"`);
     cron.schedule(schedule, () => {
-        runOverdueJob().catch((err) =>
+        runOverdueJob().catch(err =>
             console.error('[Cron] Unhandled error in overdue job:', err.message),
         );
+        runMilestoneCron().catch(err =>
+            console.error('[Cron] Unhandled error in milestone job:', err.message),
+        );
     });
-    console.log('[Cron] Overdue penalty job started ✓');
+    console.log('[Cron] Overdue penalty + Milestone BP jobs started ✓');
 }

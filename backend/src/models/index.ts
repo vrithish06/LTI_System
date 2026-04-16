@@ -94,6 +94,9 @@ export interface ActivityRules {
     late_penalty_percent?:   number;
     overdue_penalty_hp?:     number;
     overdue_penalty_percent?: number;
+    // VIBE_MILESTONE specific
+    milestone_target_percent?: number; // e.g. 50 means "award when student reaches 50% completion"
+    milestone_reward_hp?:      number; // BP to award when milestone is reached
 }
 
 export interface IActivity extends Document {
@@ -107,6 +110,7 @@ export interface IActivity extends Document {
     is_mandatory: boolean;
     is_proof_required: boolean;
     created_at:   Date;
+    updated_at:   Date;
 }
 
 const ActivitySchema = new Schema<IActivity>(
@@ -121,11 +125,13 @@ const ActivitySchema = new Schema<IActivity>(
         is_mandatory: { type: Boolean, default: true },
         is_proof_required: { type: Boolean, default: false },
         created_at:   { type: Date,    default: () => new Date() },
+        updated_at:   { type: Date,    default: () => new Date() },
     },
     { collection: 'activities' }
 );
 ActivitySchema.index({ course_id: 1 });
 ActivitySchema.index({ deadline: 1 });
+ActivitySchema.index({ updated_at: -1 });
 
 export const ActivityModel = mongoose.models.Activity || model<IActivity>('Activity', ActivitySchema);
 
@@ -215,3 +221,25 @@ ProcessedOverdueSchema.index({ user_id: 1, activity_id: 1 }, { unique: true });
 
 export const ProcessedOverdueModel =
     mongoose.models.ProcessedOverdue || model<IProcessedOverdue>('ProcessedOverdue', ProcessedOverdueSchema);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. MilestoneAward (idempotency guard — prevents double-awarding BP)
+// ─────────────────────────────────────────────────────────────────────────────
+export interface IMilestoneAward extends Document {
+    user_id:     string;
+    activity_id: string;
+    awarded_at:  Date;
+}
+
+const MilestoneAwardSchema = new Schema<IMilestoneAward>(
+    {
+        user_id:     { type: String, required: true },
+        activity_id: { type: String, required: true },
+        awarded_at:  { type: Date,   default: () => new Date() },
+    },
+    { collection: 'milestone_awards' }
+);
+MilestoneAwardSchema.index({ user_id: 1, activity_id: 1 }, { unique: true });
+
+export const MilestoneAwardModel =
+    mongoose.models.MilestoneAward || model<IMilestoneAward>('MilestoneAward', MilestoneAwardSchema);
