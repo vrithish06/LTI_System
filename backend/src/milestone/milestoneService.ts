@@ -1,128 +1,132 @@
+/**
+ * Milestone Service
+ *
+ * When Vibe (or any LMS) calls the /api/lti/progress-webhook endpoint,
+ * this service checks whether the student has crossed the threshold
+ * for any VIBE_MILESTONE activity in that course, and awards BP exactly once.
+ */
+
 import { connectDB } from '../db/connection.js';
-import { ActivityModel, MilestoneAwardModel } from '../models/index.js';
+import {
+    ActivityModel,
+    SubmissionModel,
+    HpBalanceModel,
+    type IActivity,
+} from '../models/index.js';
+import { ProcessedMilestoneModel } from '../models/processedMilestone.js';
 import { applyReward } from '../hp/hpService.js';
 
-const VIBE_BASE_URL = process.env.VIBE_BASE_URL || 'http://localhost:3141';
-const LTI_SHARED_SECRET = process.env.LTI_SHARED_SECRET || 'vibe-lti-shared-secret-change-in-production';
+const LTI_SHARED_SECRET =
+    process.env.LTI_SHARED_SECRET || 'vibe-lti-shared-secret-change-in-production';
 
-interface VibeProgressEntry {
-    userId: string;
-    percentCompleted: number;
+/**
+ * Validates the x-lti-secret header on the progress webhook.
+ * In future: replace with OAuth2 Bearer token verification.
+ */
+export function validateWebhookSecret(secret: string | undefined): boolean {
+    return !!(secret && secret === LTI_SHARED_SECRET);
 }
 
 /**
- * Fetches per-student completion percentages from Vibe for a given course.
+ * Core milestone check — called whenever a student's progress percentage changes.
+ *
+ * Flow:
+ * 1. Fetch all VIBE_MILESTONE activities for the course
+ * 2. For each milestone whose target_percent <= the student's current progress:
+ *    a. Check idempotency table (ProcessedMilestone) — skip if already awarded
+ *    b. Award BP using hpService.applyReward
+ *    c. Create a COMPLETED submission record
+ *    d. Insert into ProcessedMilestone to prevent double-awarding
+ *
+ * @param userId         The student's userId
+ * @param courseId       The course they are enrolled in
+ * @param percentCompleted  Their latest course completion percentage (0–100)
  */
-async function fetchProgressFromVibe(courseId: string): Promise<VibeProgressEntry[]> {
-    const res = await fetch(`${VIBE_BASE_URL}/api/lti/progress/${courseId}`, {
-        headers: { 'x-lti-secret': LTI_SHARED_SECRET },
-    });
-
-    if (!res.ok) {
-        throw new Error(`[Milestone] Vibe progress fetch failed: ${res.status} ${res.statusText}`);
-    }
-
-    const data = await res.json() as any;
-    return (data.progress || []) as VibeProgressEntry[];
-}
-
-/**
- * For a single course, fetches all active VIBE_MILESTONE activities and awards BP
- * to any student who has crossed the target completion percentage and hasn't been
- * awarded yet (idempotent via the milestone_awards collection).
- */
-export async function checkAndAwardMilestonesForCourse(courseId: string): Promise<void> {
+export async function checkAndAwardMilestones(
+    userId: string,
+    courseId: string,
+    percentCompleted: number,
+): Promise<{ awarded: number; details: string[] }> {
     await connectDB();
 
-    // 1. Find all VIBE_MILESTONE activities for this course
-    const milestoneActivities = await ActivityModel.find({
+    const milestones = await ActivityModel.find({
         course_id: courseId,
         type: 'VIBE_MILESTONE',
     }).lean();
 
-    if (milestoneActivities.length === 0) {
-        console.log(`[Milestone] No milestone activities for course ${courseId}`);
-        return;
+    if (!milestones.length) {
+        return { awarded: 0, details: [] };
     }
 
-    // 2. Fetch current progress for all students from Vibe
-    let progressList: VibeProgressEntry[];
-    try {
-        progressList = await fetchProgressFromVibe(courseId);
-    } catch (err: any) {
-        console.error(`[Milestone] Failed to fetch progress: ${err.message}`);
-        return;
-    }
+    const details: string[] = [];
+    let awarded = 0;
 
-    if (progressList.length === 0) {
-        console.log(`[Milestone] No student progress data for course ${courseId}`);
-        return;
-    }
+    for (const milestone of milestones) {
+        const targetPercent: number = (milestone.rules as any)?.target_percent ?? 100;
+        const rewardBp: number = (milestone.rules as any)?.reward_hp ?? 0;
 
-    console.log(`[Milestone] Checking ${milestoneActivities.length} activities for ${progressList.length} students in course ${courseId}`);
+        if (percentCompleted < targetPercent) {
+            continue; // Student hasn't hit the threshold yet
+        }
 
-    // 3. For each milestone activity, check each student
-    for (const activity of milestoneActivities) {
-        const rules = activity.rules as any;
-        const targetPercent: number = rules?.milestone_target_percent ?? 100;
-        const rewardHp: number = rules?.milestone_reward_hp ?? rules?.reward_hp ?? 10;
+        // Idempotency check
+        const alreadyProcessed = await ProcessedMilestoneModel.findOne({
+            user_id: userId,
+            activity_id: milestone.activity_id,
+        });
 
-        for (const { userId, percentCompleted } of progressList) {
-            // Check if this student has crossed the threshold
-            if (percentCompleted < targetPercent) continue;
+        if (alreadyProcessed) {
+            continue; // Already awarded — skip
+        }
 
-            // Idempotency: check if already awarded
-            const alreadyAwarded = await MilestoneAwardModel.findOne({
-                user_id: userId,
-                activity_id: activity.activity_id,
-            });
-            if (alreadyAwarded) continue;
-
-            // Award BP and record the award atomically
+        // Award BP
+        if (rewardBp > 0) {
             try {
                 await applyReward(
                     userId,
                     courseId,
-                    rewardHp,
-                    activity.activity_id,
-                    `Milestone reached: ${activity.title} (${targetPercent}% completion)`,
+                    rewardBp,
+                    milestone.activity_id,
+                    `Milestone reached: ${milestone.title} (${targetPercent}% completion)`,
                 );
-
-                await MilestoneAwardModel.create({
-                    user_id: userId,
-                    activity_id: activity.activity_id,
-                });
-
-                console.log(`[Milestone] Awarded ${rewardHp} BP to user=${userId} for activity="${activity.title}" (${percentCompleted}% >= ${targetPercent}%)`);
-            } catch (err: any) {
-                // Unique index on milestone_awards prevents double-award even in race conditions
-                if (err.code === 11000) {
-                    console.log(`[Milestone] Duplicate award skipped for user=${userId} activity=${activity.activity_id}`);
-                } else {
-                    console.error(`[Milestone] Failed to award BP for user=${userId}: ${err.message}`);
-                }
+            } catch (err) {
+                console.error(`[Milestone] Failed to award BP for ${milestone.activity_id}:`, err);
+                continue;
             }
         }
+
+        // Create submission record
+        await SubmissionModel.findOneAndUpdate(
+            { user_id: userId, activity_id: milestone.activity_id },
+            {
+                $set: {
+                    user_id: userId,
+                    activity_id: milestone.activity_id,
+                    course_id: courseId,
+                    status: 'COMPLETED',
+                    submitted_at: new Date(),
+                    penalty_applied: false,
+                },
+            },
+            { upsert: true },
+        );
+
+        // Mark as processed (idempotency guard)
+        await ProcessedMilestoneModel.create({
+            user_id: userId,
+            activity_id: milestone.activity_id,
+            awarded_bp: rewardBp,
+            processed_at: new Date(),
+        });
+
+        awarded++;
+        details.push(
+            `Awarded ${rewardBp} BP for milestone "${milestone.title}" (target: ${targetPercent}%)`,
+        );
+        console.log(
+            `[Milestone] ✅ Awarded ${rewardBp} BP to user ${userId} for "${milestone.title}"`,
+        );
     }
-}
 
-/**
- * Runs milestone checks for ALL distinct courses that have VIBE_MILESTONE activities.
- * Called by the cron scheduler every N minutes.
- */
-export async function runMilestoneCron(): Promise<void> {
-    await connectDB();
-
-    const courses = await ActivityModel.distinct('course_id', { type: 'VIBE_MILESTONE' });
-    console.log(`[Milestone Cron] Running for ${courses.length} courses with milestone activities`);
-
-    await Promise.allSettled(
-        courses.map((courseId: string) =>
-            checkAndAwardMilestonesForCourse(courseId).catch(err =>
-                console.error(`[Milestone Cron] Error for course ${courseId}: ${err.message}`)
-            )
-        )
-    );
-
-    console.log(`[Milestone Cron] Done`);
+    return { awarded, details };
 }

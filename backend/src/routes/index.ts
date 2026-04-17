@@ -5,7 +5,6 @@ import { ltiController } from '../controllers/lti.controller.js';
 import { examController } from '../controllers/exam.controller.js';
 import { bpController } from '../controllers/bp.controller.js';
 import { activityController } from '../controllers/activity.controller.js';
-import { checkAndAwardMilestonesForCourse } from '../milestone/milestoneService.js';
 import multer from 'multer';
 import { cloudStorageService } from '../utils/cloud-storage.js';
 
@@ -13,6 +12,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 
 /**
  * Main application router linking API paths to initialized controller endpoints.
+ * Abides by the Open/Closed Principle: adding new domains only requires new files instead of extending a massive index.
  */
 export const router = Router();
 
@@ -20,18 +20,6 @@ export const router = Router();
 // LTI LAUNCH ROUTES  (called by VIBE backend with shared secret)
 // ─────────────────────────────────────────────────────────────────
 router.post('/launch', ltiController.launch.bind(ltiController));
-
-// ─────────────────────────────────────────────────────────────────
-// MILESTONE ROUTES — manual check trigger (called by instructor UI)
-// ─────────────────────────────────────────────────────────────────
-router.post('/lti/milestone/check/:courseId', async (req: Request, res: Response) => {
-    try {
-        await checkAndAwardMilestonesForCourse(req.params.courseId);
-        res.json({ success: true, message: 'Milestone check complete' });
-    } catch (err: any) {
-        res.status(500).json({ success: false, error: err.message });
-    }
-});
 
 // ─────────────────────────────────────────────────────────────────
 // QUIZ / EXAM ROUTES
@@ -172,8 +160,75 @@ router.get('/lti/proof/:fileId', async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────────
+// MILESTONE PROGRESS WEBHOOK
+// Called by Vibe (or any LMS) when a student's course progress changes.
+// Secured via x-lti-secret header (replace with OAuth2 bearer for generic LMS).
+// ─────────────────────────────────────────────────────────────────
+router.post('/lti/progress-webhook', async (req: Request, res: Response) => {
+    try {
+        const { validateWebhookSecret, checkAndAwardMilestones } =
+            await import('../milestone/milestoneService.js');
+
+        const secret = req.headers['x-lti-secret'] as string | undefined;
+        if (!validateWebhookSecret(secret)) {
+            res.status(401).json({ error: 'Unauthorized: invalid x-lti-secret' });
+            return;
+        }
+
+        const { userId, courseId, percentCompleted } = req.body;
+        if (!userId || !courseId || percentCompleted === undefined) {
+            res.status(400).json({ error: 'Missing required fields: userId, courseId, percentCompleted' });
+            return;
+        }
+
+        console.log(`[Milestone Webhook] userId=${userId} courseId=${courseId} progress=${percentCompleted}%`);
+
+        // Run milestone check in the background — respond immediately so Vibe isn't blocked
+        res.json({ success: true, message: 'Progress received, checking milestones...' });
+
+        checkAndAwardMilestones(userId, courseId, Number(percentCompleted))
+            .then(({ awarded, details }) => {
+                if (awarded > 0) {
+                    console.log(`[Milestone Webhook] Awarded BP for ${awarded} milestone(s):`, details);
+                }
+            })
+            .catch((err: Error) => {
+                console.error('[Milestone Webhook] Error in milestone check:', err.message);
+            });
+
+    } catch (err: any) {
+        console.error('[Milestone Webhook] Fatal error:', err.message);
+        res.status(500).json({ error: 'Internal server error', detail: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────
 // BROWNIE POINTS ROUTES  (instructor-facing, called via LTI launch)
 // ─────────────────────────────────────────────────────────────────
+
+// POST /api/lti/milestone-backfill/:courseId
+// Instructor-triggered: checks ALL students' current Vibe progress NOW
+// and awards BP to anyone already above the VIBE_MILESTONE threshold.
+router.post('/lti/milestone-backfill/:courseId', async (req: Request, res: Response) => {
+    try {
+        const secret = req.headers['x-lti-secret'] as string | undefined;
+        const expectedSecret = process.env.LTI_SHARED_SECRET || 'vibe-lti-shared-secret-change-in-production';
+        if (!secret || secret !== expectedSecret) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+        const { courseId } = req.params;
+        const { backfillMilestoneAwards } = await import('../milestone/milestoneBackfill.js');
+        console.log(`[Milestone Backfill] Starting for course ${courseId}`);
+        const result = await backfillMilestoneAwards(courseId);
+        console.log(`[Milestone Backfill] Done: ${result.studentsAwarded}/${result.studentsChecked} students awarded ${result.totalBpAwarded} total BP`);
+        res.json({ success: true, ...result });
+    } catch (err: any) {
+        console.error('[Milestone Backfill] Error:', err.message);
+        res.status(500).json({ error: 'Backfill failed', detail: err.message });
+    }
+});
+
 router.get('/bp/:courseId', bpController.getPointsByCourse.bind(bpController));
 router.get('/bp/student/:courseId/:studentId', bpController.getStudentPoints.bind(bpController));
 router.patch('/bp/:courseId/:studentId', bpController.adjustPointsForStudent.bind(bpController));

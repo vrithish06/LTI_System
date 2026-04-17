@@ -59,7 +59,7 @@ export class ActivityController {
                 `${courseId.toLowerCase()}-${title.toLowerCase().replace(/\s+/g, '-')}-${Date.now().toString().slice(-4)}`;
 
             // 2. Construct rules object for HP engine
-            const rules: any = {
+            const rules: Record<string, any> = {
                 reward_hp: Number(rewardValue) || 10,
                 reward_type: rewardType || 'ABSOLUTE',
                 late_penalty_hp: mandatory && penaltyType === 'ABSOLUTE' ? Number(penaltyValue) : 0,
@@ -69,10 +69,9 @@ export class ActivityController {
                 description: description || '',
             };
 
-            // Milestone-specific fields
-            if (activityType === 'VIBE_MILESTONE') {
-                rules.milestone_target_percent = Number(body.milestoneTargetPercent) || 50;
-                rules.milestone_reward_hp = Number(body.milestoneRewardHp) || Number(rewardValue) || 10;
+            // For VIBE_MILESTONE: store target completion percentage
+            if (activityType === 'VIBE_MILESTONE' && body.targetPercent !== undefined) {
+                rules.target_percent = Number(body.targetPercent);
             }
 
             // 3. Persist in LTI database
@@ -105,6 +104,21 @@ export class ActivityController {
             }
 
             res.status(201).json({ success: true, data: activity, JWT });
+
+            // Auto-trigger milestone backfill in the background for VIBE_MILESTONE activities.
+            // This immediately awards BP to any students who already have enough progress,
+            // without making the instructor click anything.
+            if (activityType === 'VIBE_MILESTONE' && courseId) {
+                import('../milestone/milestoneBackfill.js').then(({ backfillMilestoneAwards }) => {
+                    backfillMilestoneAwards(courseId)
+                        .then(({ studentsAwarded, studentsChecked, totalBpAwarded }) => {
+                            console.log(`[Milestone Auto-Backfill] Course ${courseId}: checked ${studentsChecked} students, awarded ${totalBpAwarded} BP to ${studentsAwarded} student(s).`);
+                        })
+                        .catch((err: Error) => {
+                            console.warn('[Milestone Auto-Backfill] Error:', err.message);
+                        });
+                }).catch(() => {});
+            }
         } catch (err: any) {
             console.error('[Activity Create] Error:', err.message);
             res.status(500).json({ error: 'Failed to register activity', detail: err.message });
@@ -274,6 +288,10 @@ export class ActivityController {
             if (body.hpAssignmentMode !== undefined) rules.hp_assignment_mode = body.hpAssignmentMode;
             if (body.submissionMode !== undefined) rules.submission_mode = body.submissionMode;
             if (body.description !== undefined) rules.description = body.description;
+            // VIBE_MILESTONE: persist the target completion percentage
+            if (body.activityType === 'VIBE_MILESTONE' && body.targetPercent !== undefined) {
+                rules.target_percent = Number(body.targetPercent);
+            }
 
             const updated = await updateActivity(activityId, {
                 title: body.title,

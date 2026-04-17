@@ -15,8 +15,5 @@ export interface ActivityRecord {
     late_penalty_hp?: number;
     late_penalty_percent?: number;
     score_to_hp_multiplier?: number;
-    // VIBE_MILESTONE specific
-    milestone_target_percent?: number;
-    milestone_reward_hp?: number;
   };
 }

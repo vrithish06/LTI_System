@@ -23,6 +23,7 @@ interface EditFormData {
   hpAssignmentMode: string;
   gracePeriodDuration: string;
   isProofRequired: boolean;
+  targetPercent: string; // VIBE_MILESTONE only
 }
 
 type SortKey = 'updated_at' | 'created_at' | 'title' | 'deadline';
@@ -49,6 +50,7 @@ const activityToForm = (a: ActivityRecord): EditFormData => ({
   hpAssignmentMode: (a.rules as any)?.hp_assignment_mode || 'AUTOMATIC',
   gracePeriodDuration: String(Math.floor(((a.grace_period ?? 0)) / 60)),
   isProofRequired: a.is_proof_required ?? false,
+  targetPercent: String((a.rules as any)?.target_percent ?? 50),
 });
 
 const fmtDate = (iso?: string) => {
@@ -90,6 +92,7 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
   const [editForm, setEditForm]       = useState<EditFormData | null>(null);
   const [saving, setSaving]           = useState(false);
   const [deletingId, setDeletingId]   = useState<string | null>(null);
+  const [backfillingId, setBackfillingId] = useState<string | null>(null);
   const [viewingSubmissionsActivity, setViewingSubmissionsActivity] = useState<ActivityRecord | null>(null);
 
   // ── Filter / Sort state ──────────────────────────────────────────────────
@@ -217,6 +220,7 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
         hpAssignmentMode: editForm.hpAssignmentMode,
         gracePeriodDuration: Number(editForm.gracePeriodDuration),
         isProofRequired: editForm.isProofRequired,
+        targetPercent: editForm.activityType === 'VIBE_MILESTONE' ? Number(editForm.targetPercent) : undefined,
       });
       setEditingId(null); setEditForm(null);
       await fetchActivities();
@@ -240,10 +244,28 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
     }
   };
 
-  const formatDeadline = (a: ActivityRecord) => {
-    if (a.type === 'VIBE_MILESTONE') return null; // milestones never have a deadline
-    if (!a.deadline) return 'No deadline';
-    const d = new Date(a.deadline);
+  const handleMilestoneCheck = async (courseId: string) => {
+    setBackfillingId(courseId);
+    try {
+      const { data } = await axios.post(`/api/lti/milestone-backfill/${courseId}`, {}, {
+        headers: { 'x-lti-secret': 'vibe-lti-shared-secret-change-in-production' },
+      });
+      if (data.studentsAwarded > 0) {
+        alert(`✅ Done! Awarded BP to ${data.studentsAwarded} student(s):\n${data.details.join('\n')}`);
+      } else {
+        alert(`✅ Checked ${data.studentsChecked} student(s). No new awards needed — all eligible students already received BP.`);
+      }
+      await fetchActivities();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || 'Milestone check failed.');
+    } finally {
+      setBackfillingId(null);
+    }
+  };
+
+  const formatDeadline = (iso?: string) => {
+    if (!iso) return 'No deadline';
+    const d = new Date(iso);
     const isOverdue = d < new Date();
     return {
       label: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
@@ -409,8 +431,7 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
       ) : (
         <div className="ia-list">
           {displayed.map(a => {
-            const dl       = formatDeadline(a);
-            const isMilestone = a.type === 'VIBE_MILESTONE';
+            const dl       = formatDeadline(a.deadline);
             const isEditing  = editingId === a.activity_id;
             const isDeleting = deletingId === a.activity_id;
             const lastEdited = a.updated_at || a.created_at;
@@ -429,24 +450,21 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
                     <div className="ia-row-content">
                       <span className="ia-row-title">{a.title}</span>
                       <div className="ia-row-meta">
-                        {/* Deadline tag — hidden for milestones */}
-                        {isMilestone ? (
-                          <span className="ia-meta-tag" style={{ background: 'hsl(38,80%,92%)', color: 'hsl(38,60%,35%)', fontWeight: 600 }}>
-                            🎯 {(a.rules as any)?.milestone_target_percent ?? 50}% completion
-                          </span>
+                        {typeof dl === 'string' ? (
+                          <span className="ia-meta-tag">{dl}</span>
                         ) : (
-                          dl === null ? null :
-                          typeof dl === 'string' ? (
-                            <span className="ia-meta-tag">{dl}</span>
-                          ) : (
-                            <span className={`ia-meta-tag ${dl.isOverdue ? 'ia-overdue' : ''}`}>
-                              {dl.isOverdue ? '⚠ Overdue · ' : ''}{dl.label}
-                            </span>
-                          )
+                          <span className={`ia-meta-tag ${dl.isOverdue ? 'ia-overdue' : ''}`}>
+                            {dl.isOverdue ? '⚠ Overdue · ' : ''}{dl.label}
+                          </span>
                         )}
-                        <span className="ia-meta-tag ia-type">{a.type.replace('_', ' ')}</span>
+                        <span className="ia-meta-tag ia-type">{a.type}</span>
                         <span className={`ia-meta-tag ${a.is_mandatory ? 'ia-req' : 'ia-opt'}`}>{a.is_mandatory ? 'Required' : 'Optional'}</span>
-                        <span className="ia-meta-tag">🏆 {isMilestone ? ((a.rules as any)?.milestone_reward_hp ?? (a.rules as any)?.reward_hp ?? 0) : ((a.rules as any)?.reward_hp ?? 0)} BP</span>
+                        <span className="ia-meta-tag">🏆 {(a.rules as any)?.reward_hp ?? 0} BP</span>
+                        {a.type === 'VIBE_MILESTONE' && (a.rules as any)?.target_percent !== undefined && (
+                          <span className="ia-meta-tag" style={{ background: 'hsl(38,80%,92%)', color: 'hsl(30,60%,30%)' }}>
+                            🎯 {(a.rules as any).target_percent}% threshold
+                          </span>
+                        )}
                         {lastEdited && (
                           <span className="ia-meta-tag ia-timestamp" title={fmtDate(lastEdited) ?? ''}>
                             {a.updated_at && a.updated_at !== a.created_at ? '✏ ' : '🕐 '}
@@ -463,16 +481,19 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
                         </svg>
                         Edit
                       </button>
-                      <button className="ia-btn btn-secondary" onClick={() => setViewingSubmissionsActivity(a)} title="View Submissions">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                          <polyline points="14 2 14 8 20 8" />
-                          <line x1="16" y1="13" x2="8" y2="13" />
-                          <line x1="16" y1="17" x2="8" y2="17" />
-                          <polyline points="10 9 9 9 8 9" />
-                        </svg>
-                        Submissions
-                      </button>
+
+                      {a.type !== 'VIBE_MILESTONE' && (
+                        <button className="ia-btn btn-secondary" onClick={() => setViewingSubmissionsActivity(a)} title="View Submissions">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                            <polyline points="10 9 9 9 8 9" />
+                          </svg>
+                          Submissions
+                        </button>
+                      )}
                       <button className="ia-btn ia-btn-delete" onClick={() => handleDelete(a.activity_id, a.title)} disabled={isDeleting} title="Delete">
                         {isDeleting ? (
                           <span style={{ fontSize: '0.7rem' }}>Deleting…</span>
@@ -515,25 +536,45 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
                           <option value="EXTERNAL_IMPORT">External Import</option>
                         </select>
                       </div>
-                      <div>
-                        <label>Submission Mode</label>
-                        <select className="ia-input" name="submissionMode" value={editForm.submissionMode} onChange={handleEditChange}>
-                          <option value="IN_PLATFORM">In Platform</option>
-                          <option value="EXTERNAL_LINK">External Link</option>
-                          <option value="CSV_IMPORT">CSV Import</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label>Deadline</label>
-                        <input className="ia-input" type="datetime-local" name="deadline" value={editForm.deadline} onChange={handleEditChange} />
-                      </div>
-                      <div>
-                        <label>HP Assignment Mode</label>
-                        <select className="ia-input" name="hpAssignmentMode" value={editForm.hpAssignmentMode} onChange={handleEditChange}>
-                          <option value="AUTOMATIC">Automatic</option>
-                          <option value="MANUAL">Manual</option>
-                        </select>
-                      </div>
+                      {editForm.activityType !== 'VIBE_MILESTONE' && (
+                        <div>
+                          <label>Submission Mode</label>
+                          <select className="ia-input" name="submissionMode" value={editForm.submissionMode} onChange={handleEditChange}>
+                            <option value="IN_PLATFORM">In Platform</option>
+                            <option value="EXTERNAL_LINK">External Link</option>
+                            <option value="CSV_IMPORT">CSV Import</option>
+                          </select>
+                        </div>
+                      )}
+                      {editForm.activityType !== 'VIBE_MILESTONE' && (
+                        <div>
+                          <label>Deadline</label>
+                          <input className="ia-input" type="datetime-local" name="deadline" value={editForm.deadline} onChange={handleEditChange} />
+                        </div>
+                      )}
+                      {editForm.activityType !== 'VIBE_MILESTONE' && (
+                        <div>
+                          <label>HP Assignment Mode</label>
+                          <select className="ia-input" name="hpAssignmentMode" value={editForm.hpAssignmentMode} onChange={handleEditChange}>
+                            <option value="AUTOMATIC">Automatic</option>
+                            <option value="MANUAL">Manual</option>
+                          </select>
+                        </div>
+                      )}
+                      {/* VIBE_MILESTONE: Target % field */}
+                      {editForm.activityType === 'VIBE_MILESTONE' && (
+                        <div>
+                          <label>Target Completion %</label>
+                          <input
+                            className="ia-input" type="number" name="targetPercent"
+                            value={editForm.targetPercent} onChange={handleEditChange}
+                            min={1} max={100} step={1}
+                          />
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: 3 }}>
+                            BP is awarded once when student reaches this threshold.
+                          </span>
+                        </div>
+                      )}
                       <div>
                         <label>Reward Type</label>
                         <select className="ia-input" name="rewardType" value={editForm.rewardType} onChange={handleEditChange}>
@@ -545,33 +586,39 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
                         <label>Reward Value (BP)</label>
                         <input className="ia-input" type="number" name="rewardValue" value={editForm.rewardValue} onChange={handleEditChange} />
                       </div>
-                      <div>
-                        <label>Grace Period (Hours)</label>
-                        <input className="ia-input" type="number" name="gracePeriodDuration" value={editForm.gracePeriodDuration} onChange={handleEditChange} />
-                      </div>
-                      <div className="ia-form-checkboxes">
-                        <label className="ia-checkbox-row">
-                          <input type="checkbox" name="mandatory" checked={editForm.mandatory} onChange={handleEditChange} />
-                          <span>Mandatory Activity</span>
-                        </label>
-                        <label className="ia-checkbox-row">
-                          <input type="checkbox" name="isProofRequired" checked={editForm.isProofRequired} onChange={handleEditChange} />
-                          <span>Proof Required</span>
-                        </label>
-                      </div>
-                      {editForm.mandatory && (
+                      {editForm.activityType !== 'VIBE_MILESTONE' && (
+                        <div>
+                          <label>Grace Period (Hours)</label>
+                          <input className="ia-input" type="number" name="gracePeriodDuration" value={editForm.gracePeriodDuration} onChange={handleEditChange} />
+                        </div>
+                      )}
+                      {editForm.activityType !== 'VIBE_MILESTONE' && (
                         <>
-                          <div>
-                            <label>Penalty Type</label>
-                            <select className="ia-input" name="penaltyType" value={editForm.penaltyType} onChange={handleEditChange}>
-                              <option value="PERCENTAGE">Percentage (%)</option>
-                              <option value="ABSOLUTE">Absolute (Fixed BP)</option>
-                            </select>
+                          <div className="ia-form-checkboxes">
+                            <label className="ia-checkbox-row">
+                              <input type="checkbox" name="mandatory" checked={editForm.mandatory} onChange={handleEditChange} />
+                              <span>Mandatory Activity</span>
+                            </label>
+                            <label className="ia-checkbox-row">
+                              <input type="checkbox" name="isProofRequired" checked={editForm.isProofRequired} onChange={handleEditChange} />
+                              <span>Proof Required</span>
+                            </label>
                           </div>
-                          <div>
-                            <label>Penalty Value</label>
-                            <input className="ia-input" type="number" name="penaltyValue" value={editForm.penaltyValue} onChange={handleEditChange} />
-                          </div>
+                          {editForm.mandatory && (
+                            <>
+                              <div>
+                                <label>Penalty Type</label>
+                                <select className="ia-input" name="penaltyType" value={editForm.penaltyType} onChange={handleEditChange}>
+                                  <option value="PERCENTAGE">Percentage (%)</option>
+                                  <option value="ABSOLUTE">Absolute (Fixed BP)</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label>Penalty Value</label>
+                                <input className="ia-input" type="number" name="penaltyValue" value={editForm.penaltyValue} onChange={handleEditChange} />
+                              </div>
+                            </>
+                          )}
                         </>
                       )}
                     </div>

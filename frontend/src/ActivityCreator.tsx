@@ -26,8 +26,8 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
     hpAssignmentMode: 'AUTOMATIC',
     gracePeriodDuration: '0',
     graceRewardPercentage: '100',
-    milestoneTargetPercent: '50',
-    milestoneRewardHp: '10',
+    // VIBE_MILESTONE specific
+    targetPercent: '50',
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -40,8 +40,17 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title || (!formData.deadline && formData.activityType !== 'VIBE_MILESTONE')) {
-      alert('Please fill in all required fields (title, deadline)');
+    const isMilestone = formData.activityType === 'VIBE_MILESTONE';
+    if (!formData.title) {
+      alert('Please fill in the activity title.');
+      return;
+    }
+    if (!isMilestone && !formData.deadline) {
+      alert('Please fill in the deadline.');
+      return;
+    }
+    if (isMilestone && (Number(formData.targetPercent) <= 0 || Number(formData.targetPercent) > 100)) {
+      alert('Target Completion % must be between 1 and 100.');
       return;
     }
     setIsLoading(true);
@@ -54,12 +63,10 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
         rewardValue: Number(formData.rewardValue),
         gracePeriodDuration: Number(formData.gracePeriodDuration),
         graceRewardPercentage: Number(formData.graceRewardPercentage),
-        deadline: formData.activityType !== 'VIBE_MILESTONE' ? new Date(formData.deadline).toISOString() : undefined,
+        deadline: isMilestone ? null : new Date(formData.deadline).toISOString(),
         penaltyType: formData.mandatory ? formData.penaltyType : null,
         penaltyValue: formData.mandatory ? Number(formData.penaltyValue) : null,
-        // Milestone-specific — only sent when relevant
-        milestoneTargetPercent: formData.activityType === 'VIBE_MILESTONE' ? Number(formData.milestoneTargetPercent) : undefined,
-        milestoneRewardHp: formData.activityType === 'VIBE_MILESTONE' ? Number(formData.milestoneRewardHp) : undefined,
+        targetPercent: isMilestone ? Number(formData.targetPercent) : undefined,
         context,
       };
 
@@ -151,63 +158,52 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
             <input
               type="datetime-local" name="deadline" value={formData.deadline}
               onChange={handleChange} className="acr-input"
-              required={formData.activityType !== 'VIBE_MILESTONE'}
             />
           </div>
         )}
 
-        <div className="acr-field">
-          <label className="acr-label">HP Assignment Mode</label>
-          <select name="hpAssignmentMode" value={formData.hpAssignmentMode} onChange={handleChange} className="acr-input">
-            <option value="AUTOMATIC">Automatic</option>
-            <option value="MANUAL">Manual</option>
-          </select>
-        </div>
+        {formData.activityType !== 'VIBE_MILESTONE' && (
+          <div className="acr-field">
+            <label className="acr-label">HP Assignment Mode</label>
+            <select name="hpAssignmentMode" value={formData.hpAssignmentMode} onChange={handleChange} className="acr-input">
+              <option value="AUTOMATIC">Automatic</option>
+              <option value="MANUAL">Manual</option>
+            </select>
+          </div>
+        )}
 
-        <div className="acr-divider acr-full" />
-
-        {/* ── VIBE_MILESTONE config ── */}
+        {/* ── VIBE Milestone specific fields ── */}
         {formData.activityType === 'VIBE_MILESTONE' && (
           <>
-            <div className="acr-field acr-full" style={{ background: 'hsl(38,80%,97%)', border: '1px solid hsl(38,70%,80%)', borderRadius: 10, padding: '16px 18px', gridColumn: '1 / -1' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <span style={{ fontSize: '1.1rem' }}>🎯</span>
-                <span style={{ fontWeight: 700, color: 'var(--primary-dark)', fontSize: '0.95rem' }}>Milestone Configuration</span>
-              </div>
-              <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                A background job checks each student's course completion percentage every 5 minutes.
-                When their progress reaches the target, they are automatically awarded the specified BP.
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="acr-field acr-full" style={{ background: 'hsl(38,90%,97%)', border: '1px solid hsl(38,70%,82%)', borderRadius: 10, padding: '14px 16px', marginTop: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <span style={{ fontSize: '1.3rem', lineHeight: 1 }}>🎯</span>
                 <div>
-                  <label className="acr-label">Target Completion % <span className="acr-req">*</span></label>
-                  <input
-                    type="number" min="1" max="100"
-                    name="milestoneTargetPercent"
-                    value={formData.milestoneTargetPercent}
-                    onChange={handleChange}
-                    placeholder="e.g. 50"
-                    className="acr-input"
-                  />
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Award once student reaches this % in Vibe</span>
-                </div>
-                <div>
-                  <label className="acr-label">BP to Award <span className="acr-req">*</span></label>
-                  <input
-                    type="number" min="1"
-                    name="milestoneRewardHp"
-                    value={formData.milestoneRewardHp}
-                    onChange={handleChange}
-                    placeholder="e.g. 20"
-                    className="acr-input"
-                  />
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Brownie Points awarded at milestone</span>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: '0.9rem', color: 'hsl(30,60%,28%)' }}>LMS Milestone — How it works</p>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'hsl(30,40%,40%)' }}>
+                    When a student's course completion reaches the target percentage, Vibe automatically notifies the LTI tool via a real-time webhook and the student is instantly awarded the configured BP.
+                    Works with any LMS that supports progress webhooks.
+                  </p>
                 </div>
               </div>
             </div>
-            <div className="acr-divider acr-full" />
+            <div className="acr-field">
+              <label className="acr-label">Target Completion % <span className="acr-req">*</span></label>
+              <input
+                type="number" name="targetPercent" value={formData.targetPercent}
+                onChange={handleChange} className="acr-input"
+                min={1} max={100} step={1}
+                placeholder="e.g. 50"
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, display: 'block' }}>
+                BP is awarded once when this threshold is crossed.
+              </span>
+            </div>
+            <div className="acr-field" />
           </>
         )}
+
+        <div className="acr-divider acr-full" />
 
         {/* ── Row: Reward Type + Reward Value ── */}
         <div className="acr-field">
@@ -223,53 +219,58 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
           <input type="number" name="rewardValue" value={formData.rewardValue} onChange={handleChange} className="acr-input" />
         </div>
 
-        {/* ── Row: Grace Period + Grace Reward ── */}
-        <div className="acr-field">
-          <label className="acr-label">Grace Period (Hours)</label>
-          <input type="number" name="gracePeriodDuration" value={formData.gracePeriodDuration} onChange={handleChange} className="acr-input" />
-        </div>
-
-        {Number(formData.gracePeriodDuration) > 0 ? (
-          <div className="acr-field">
-            <label className="acr-label">Grace Reward (%)</label>
-            <input type="number" name="graceRewardPercentage" value={formData.graceRewardPercentage} onChange={handleChange} className="acr-input" />
-          </div>
-        ) : <div className="acr-field" />}
+        {/* ── Row: Grace Period (hidden for milestones) ── */}
+        {formData.activityType !== 'VIBE_MILESTONE' && (
+          <>
+            <div className="acr-field">
+              <label className="acr-label">Grace Period (Hours)</label>
+              <input type="number" name="gracePeriodDuration" value={formData.gracePeriodDuration} onChange={handleChange} className="acr-input" />
+            </div>
+            {Number(formData.gracePeriodDuration) > 0 ? (
+              <div className="acr-field">
+                <label className="acr-label">Grace Reward (%)</label>
+                <input type="number" name="graceRewardPercentage" value={formData.graceRewardPercentage} onChange={handleChange} className="acr-input" />
+              </div>
+            ) : <div className="acr-field" />}
+          </>
+        )}
 
         <div className="acr-divider acr-full" />
 
-        {/* ── Checkboxes ── */}
-        <div className="acr-checks acr-full">
-          <label className="acr-check-row">
-            <input type="checkbox" name="mandatory" checked={formData.mandatory} onChange={handleChange} className="acr-checkbox" />
-            <span className="acr-check-label">
-              <span className="acr-check-title">Mandatory Activity</span>
-              <span className="acr-check-sub">Students must complete this for full credit</span>
-            </span>
-          </label>
-          <label className="acr-check-row">
-            <input type="checkbox" name="isProofRequired" checked={formData.isProofRequired} onChange={handleChange} className="acr-checkbox" />
-            <span className="acr-check-label">
-              <span className="acr-check-title">Proof Required</span>
-              <span className="acr-check-sub">Students must upload evidence of completion</span>
-            </span>
-          </label>
-        </div>
-
-        {/* ── Penalty (mandatory only) ── */}
-        {formData.mandatory && (
+        {/* ── Checkboxes + Penalty (hidden for VIBE_MILESTONE) ── */}
+        {formData.activityType !== 'VIBE_MILESTONE' && (
           <>
-            <div className="acr-field">
-              <label className="acr-label">Penalty Type</label>
-              <select name="penaltyType" value={formData.penaltyType} onChange={handleChange} className="acr-input">
-                <option value="PERCENTAGE">Percentage (%)</option>
-                <option value="ABSOLUTE">Absolute (Fixed BP)</option>
-              </select>
+            <div className="acr-checks acr-full">
+              <label className="acr-check-row">
+                <input type="checkbox" name="mandatory" checked={formData.mandatory} onChange={handleChange} className="acr-checkbox" />
+                <span className="acr-check-label">
+                  <span className="acr-check-title">Mandatory Activity</span>
+                  <span className="acr-check-sub">Students must complete this for full credit</span>
+                </span>
+              </label>
+              <label className="acr-check-row">
+                <input type="checkbox" name="isProofRequired" checked={formData.isProofRequired} onChange={handleChange} className="acr-checkbox" />
+                <span className="acr-check-label">
+                  <span className="acr-check-title">Proof Required</span>
+                  <span className="acr-check-sub">Students must upload evidence of completion</span>
+                </span>
+              </label>
             </div>
-            <div className="acr-field">
-              <label className="acr-label">Penalty Value</label>
-              <input type="number" name="penaltyValue" value={formData.penaltyValue} onChange={handleChange} className="acr-input" />
-            </div>
+            {formData.mandatory && (
+              <>
+                <div className="acr-field">
+                  <label className="acr-label">Penalty Type</label>
+                  <select name="penaltyType" value={formData.penaltyType} onChange={handleChange} className="acr-input">
+                    <option value="PERCENTAGE">Percentage (%)</option>
+                    <option value="ABSOLUTE">Absolute (Fixed BP)</option>
+                  </select>
+                </div>
+                <div className="acr-field">
+                  <label className="acr-label">Penalty Value</label>
+                  <input type="number" name="penaltyValue" value={formData.penaltyValue} onChange={handleChange} className="acr-input" />
+                </div>
+              </>
+            )}
           </>
         )}
 
