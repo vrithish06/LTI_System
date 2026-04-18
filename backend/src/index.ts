@@ -41,6 +41,11 @@ connectDB().then(() => {
         console.log(`\n🚀 LTI_System backend running on http://localhost:${PORT}`);
         console.log(`📡 Connected to Vibe LMS at: ${process.env.VIBE_BASE_URL}`);
         console.log(`🔑 JWKS fetched from: ${process.env.VIBE_JWKS_URL}\n`);
+        
+        // Start background cron jobs (e.g., overdue penalty checks)
+        import('./cron/overdueJob.js').then(({ startCronJobs }) => {
+            startCronJobs();
+        }).catch(err => console.error("Failed to start cron jobs", err));
     });
 }).catch((err) => {
     console.error('❌ Failed to start server:', err);

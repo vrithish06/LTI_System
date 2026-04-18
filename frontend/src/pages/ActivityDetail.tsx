@@ -140,7 +140,7 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
         const hpRes = await axios.get(`/api/lti/bp/${userId}/${courseId}`);
         const bal = hpRes.data.data || hpRes.data.browniePoints || null;
         if (bal) setHpBalance(bal);
-      } catch (_) {}
+      } catch (_) { }
 
       showToast(result.message || 'Activity submitted!', 'success');
       onSuccess?.(result.hp_change ?? 0);
@@ -157,7 +157,7 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
           const list: SubmissionRecord[] = subRes.data.data || subRes.data.submissions || [];
           const found = list.find((s: SubmissionRecord) => s.activity_id === activityId);
           if (found) setSubmission(found);
-        } catch (_) {}
+        } catch (_) { }
         setSubmitState('done');
         return;
       }
@@ -237,8 +237,8 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
                   <label style={{ display: 'block', fontWeight: 600, marginBottom: '0.5rem' }}>
                     Upload Proof (PDF, JPG, PNG) <span style={{ color: 'red' }}>*</span>
                   </label>
-                  <input 
-                    type="file" 
+                  <input
+                    type="file"
                     accept=".pdf,.jpg,.jpeg,.png"
                     onChange={(e) => setProofFile(e.target.files?.[0] || null)}
                     style={{ display: 'block', width: '100%', padding: '0.5rem', border: '1px solid var(--border-color)', borderRadius: '4px' }}
@@ -253,8 +253,8 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
               {!activity.is_proof_required && (
                 <div style={{ marginBottom: '1.25rem' }}>
                   <label style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold' }}>
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       checked={confirmed}
                       onChange={(e) => setConfirmed(e.target.checked)}
                       style={{ marginRight: '0.5rem', transform: 'scale(1.2)' }}
@@ -272,9 +272,9 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
                 <button className="btn-secondary" onClick={() => setConfirmOpen(false)} disabled={submitState === 'submitting'}>
                   Cancel
                 </button>
-                <button 
-                  className="btn-primary" 
-                  onClick={handleSubmit} 
+                <button
+                  className="btn-primary"
+                  onClick={handleSubmit}
                   disabled={submitState === 'submitting' || isExpired || (activity.is_proof_required ? !proofFile : !confirmed)}
                 >
                   {submitState === 'submitting' ? 'Submitting...' : "Submit Activity"}
@@ -416,12 +416,12 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
-                You have already submitted this activity.
+                You have  submitted this activity.
               </div>
             ) : isExpired ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'red', fontWeight: 600 }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                  <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
                 </svg>
                 Expired. You cannot submit this activity.
               </div>

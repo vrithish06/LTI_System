@@ -137,8 +137,6 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
           <select name="activityType" value={formData.activityType} onChange={handleChange} className="acr-input">
             <option value="ASSIGNMENT">Assignment</option>
             <option value="VIBE_MILESTONE">VIBE Milestone</option>
-            <option value="EXTERNAL_IMPORT">External Import</option>
-            <option value="LTI_TOOL">External Tool (LTI)</option>
           </select>
         </div>
 
@@ -280,7 +278,7 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
             <p className="acr-warn">⚠ Missing course context — re-launch from Vibe to link this activity.</p>
           )}
           <button type="submit" disabled={isLoading || !context.courseId} className="acr-submit-btn">
-            {isLoading ? 'Creating…' : '✓ Create Activity & Link to Vibe'}
+            {isLoading ? 'Creating…' : '✓ Create Activity'}
           </button>
         </div>
       </form>

@@ -209,21 +209,8 @@ export class ActivityController {
             }
 
             const submissions = await SubmissionModel.find({ activity_id: activityId }).lean();
-            const learners = await UserModel.find({ course_id: activity.course_id, role: 'Learner' }).lean();
 
-            const mergedData = learners.map(learner => {
-                const sub = submissions.find(s => s.user_id === learner.user_id);
-                return {
-                    user_id: learner.user_id,
-                    activity_id: activityId,
-                    course_id: activity.course_id,
-                    status: sub ? sub.status : 'Not Submitted',
-                    submitted_at: sub ? sub.submitted_at : null,
-                    proof_url: sub ? sub.proof_url : null,
-                };
-            });
-
-            res.json({ success: true, data: mergedData });
+            res.json({ success: true, data: submissions });
         } catch (err: any) {
             console.error('[Activity Submissions Fetch] Error:', err.message);
             res.status(500).json({ error: 'Failed to fetch activity submissions', detail: err.message });

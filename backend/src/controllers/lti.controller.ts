@@ -1,54 +1,71 @@
 import { Request, Response } from 'express';
 import { validateLtiToken } from '../lti/ltiValidator.js';
 import { syncRosterForCourse } from '../services/bp.service.js';
+import { syncRosterFromNrps } from '../services/nrps.service.js';
 import { provisionUser } from '../hp/hpService.js';
 
+const VIBE_BASE_URL = process.env.VIBE_BASE_URL || 'http://localhost:3141';
+
 /**
- * Controller class for handling LTI Launch endpoints.
- * Follows the Single Responsibility Principle by only managing LTI authentications and launches.
+ * LTI Launch Controller
+ *
+ * Handles POST /launch — called by both:
+ *   - Vibe (HS256 shared secret, direct backend-to-backend)
+ *   - Universal LMS (RS256, via OIDC step-3 form_post from browser)
+ *
+ * After validating the token, roster sync is dispatched in the background
+ * using the appropriate method:
+ *   - Vibe:    x-lti-secret against Vibe's NRPS endpoint
+ *   - Universal: OAuth2 Bearer against the standard NRPS memberships URL
  */
 export class LtiController {
     
-    /**
-     * Validates the incoming LTI JWT token from Vibe LMS.
-     * Returns the decoded LTI context data.
-     * Additionally syncs the course roster if the user launched with an Instructor role.
-     * 
-     * @param req Express Request
-     * @param res Express Response
-     */
     public async launch(req: Request, res: Response): Promise<void> {
         try {
-            console.log(`[Launch] Received launch request from origin: ${req.headers.origin || 'unknown'}`);
+            console.log(`[Launch] Received launch from origin: ${req.headers.origin || 'unknown'}`);
             
-            // Extract token from body, query, or authorization header
-            let token = req.body.token || req.query.lti_token;
+            // Extract token from body, query, or Authorization header
+            let token = req.body.token || req.body.id_token || req.query.lti_token;
             if (!token && req.headers.authorization?.startsWith('Bearer ')) {
                 token = req.headers.authorization.split(' ')[1];
             }
             
             if (!token) { 
-                console.warn('[Launch] Missing LTI token in request');
-                res.status(400).json({ error: 'Missing LTI token. Ensure lti_token is passed in the query string or body.' }); 
+                res.status(400).json({ error: 'Missing LTI token. Pass as lti_token query param, body.token, or Bearer header.' }); 
                 return; 
             }
 
-            // Validate the token and extract payload context
             const context = await validateLtiToken(token);
-            console.log(`[Launch] Successfully validated token for user: ${context.userId} (${context.role})`);
+            console.log(`[Launch] ✓ ${context.role} ${context.userId} — course: ${context.courseId} — platform: ${context.platformIssuer}`);
 
-            // If an instructor is launching the tool, we preemptively sync the course roster in the background
+            // ── Background: roster sync ────────────────────────────────────
+            // Choose sync method based on how this launch arrived
             if (context.role === 'Instructor' && context.courseId) {
-                syncRosterForCourse(context.courseId).catch((err: Error) => {
-                    console.warn('[NRPS] Background roster sync failed on launch:', err.message);
-                });
+                const isVibe = context.platformIssuer === VIBE_BASE_URL;
+
+                if (isVibe || !context.nrpsMembershipsUrl) {
+                    // Vibe path: x-lti-secret against Vibe's custom NRPS endpoint
+                    syncRosterForCourse(context.courseId).catch((err: Error) =>
+                        console.warn('[NRPS] Vibe roster sync failed:', err.message)
+                    );
+                } else {
+                    // Universal path: OAuth2 Bearer against standard NRPS memberships URL
+                    syncRosterFromNrps(
+                        context.nrpsMembershipsUrl,
+                        context.platformIssuer,
+                        context.courseId,
+                        context.courseName,
+                    ).catch((err: Error) =>
+                        console.warn('[NRPS] Universal roster sync failed:', err.message)
+                    );
+                }
             }
 
-            // Always provision the user (idempotent) so HP balance exists before any submission
+            // Always provision the launching user (idempotent)
             if (context.userId && context.courseId) {
-                provisionUser(context.userId, context.courseId, context.role).catch((err: Error) => {
-                    console.warn('[Provision] Failed to provision user on launch:', err.message);
-                });
+                provisionUser(context.userId, context.courseId, context.role).catch((err: Error) =>
+                    console.warn('[Provision] Failed to provision user:', err.message)
+                );
             }
 
             res.json({ success: true, context });
@@ -64,3 +81,4 @@ export class LtiController {
 }
 
 export const ltiController = new LtiController();
+

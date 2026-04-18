@@ -6,6 +6,7 @@ import StudentBPDashboard from './pages/StudentBPDashboard';
 import ActivityDetail from './pages/ActivityDetail';
 import ActivityCreator from './ActivityCreator';
 import Dashboard from './pages/Dashboard';
+import AdminDashboard from './pages/AdminDashboard';
 
 export interface LtiContext {
   userId: string;
@@ -26,6 +27,11 @@ export interface LtiContext {
 type AppState = 'loading' | 'ready' | 'success' | 'error';
 
 export default function App() {
+  const path = window.location.pathname;
+  if (path === '/admin') {
+    return <AdminDashboard />;
+  }
+
   const [state, setState] = useState<AppState>('loading');
   const [context, setContext] = useState<LtiContext | null>(null);
   const [errorMsg, setErrorMsg] = useState('');

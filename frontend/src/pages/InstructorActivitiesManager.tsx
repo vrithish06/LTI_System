@@ -81,7 +81,7 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: 'deadline',   label: 'Deadline' },
 ];
 
-const TYPE_OPTIONS = ['All', 'ASSIGNMENT', 'LTI_TOOL', 'VIBE_MILESTONE', 'EXTERNAL_IMPORT'];
+const TYPE_OPTIONS = ['All', 'ASSIGNMENT', 'VIBE_MILESTONE'];
 const MANDATORY_OPTIONS = ['All', 'Required', 'Optional'];
 
 export default function InstructorActivitiesManager({ context, onAddActivity }: Props) {
@@ -454,7 +454,7 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
                           <span className="ia-meta-tag">{dl}</span>
                         ) : (
                           <span className={`ia-meta-tag ${dl.isOverdue ? 'ia-overdue' : ''}`}>
-                            {dl.isOverdue ? '⚠ Overdue · ' : ''}{dl.label}
+                            {dl.isOverdue ? '⚠ Deadline passed: ' : 'Deadline: '}{dl.label}
                           </span>
                         )}
                         <span className="ia-meta-tag ia-type">{a.type}</span>
@@ -532,8 +532,6 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
                         <select className="ia-input" name="activityType" value={editForm.activityType} onChange={handleEditChange}>
                           <option value="ASSIGNMENT">Assignment</option>
                           <option value="VIBE_MILESTONE">Vibe Milestone</option>
-                          <option value="LTI_TOOL">External Tool (LTI)</option>
-                          <option value="EXTERNAL_IMPORT">External Import</option>
                         </select>
                       </div>
                       {editForm.activityType !== 'VIBE_MILESTONE' && (

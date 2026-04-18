@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 
 // Controllers
 import { ltiController } from '../controllers/lti.controller.js';
+import { universalLtiController } from '../controllers/universalLti.controller.js';
+import { adminPlatformController } from '../controllers/adminPlatform.controller.js';
 import { examController } from '../controllers/exam.controller.js';
 import { bpController } from '../controllers/bp.controller.js';
 import { activityController } from '../controllers/activity.controller.js';
@@ -17,9 +19,14 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 export const router = Router();
 
 // ─────────────────────────────────────────────────────────────────
-// LTI LAUNCH ROUTES  (called by VIBE backend with shared secret)
+// LTI LAUNCH ROUTES
+// POST /launch  — Vibe-specific (HS256 / RS256, existing flow, unchanged)
+// GET  /lti/login  — Universal LTI 1.3 OIDC step-1 (any LMS)
+// GET  /lti/jwks   — Tool's public key (LMSs fetch this to trust your tool)
 // ─────────────────────────────────────────────────────────────────
 router.post('/launch', ltiController.launch.bind(ltiController));
+router.get('/lti/login', universalLtiController.oidcLogin.bind(universalLtiController));
+router.get('/lti/jwks',  universalLtiController.jwks.bind(universalLtiController));
 
 // ─────────────────────────────────────────────────────────────────
 // QUIZ / EXAM ROUTES
@@ -244,3 +251,13 @@ router.get('/health', (_req: Request, res: Response): void => {
         timestamp: new Date().toISOString()
     });
 });
+// ─────────────────────────────────────────────────────────────────
+// ADMIN — LMS PLATFORM REGISTRATION
+// Protected by x-admin-secret header (set ADMIN_SECRET in .env).
+// Used once per LMS by the tool administrator to register a new platform.
+// ─────────────────────────────────────────────────────────────────
+router.post('/admin/platforms',        adminPlatformController.create.bind(adminPlatformController));
+router.get('/admin/platforms',         adminPlatformController.list.bind(adminPlatformController));
+router.get('/admin/platforms/:id',     adminPlatformController.getOne.bind(adminPlatformController));
+router.put('/admin/platforms/:id',     adminPlatformController.update.bind(adminPlatformController));
+router.delete('/admin/platforms/:id',  adminPlatformController.deactivate.bind(adminPlatformController));

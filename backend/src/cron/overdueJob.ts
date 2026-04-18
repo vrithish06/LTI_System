@@ -25,6 +25,7 @@ interface OverdueWork {
  */
 async function findOverdueCandidates(): Promise<OverdueWork[]> {
     await connectDB();
+    const { BrowniePointModel } = await import('../models/BrowniePoint.js');
 
     const now = new Date();
 
@@ -43,11 +44,11 @@ async function findOverdueCandidates(): Promise<OverdueWork[]> {
         );
         if (now <= graceEnd) continue;   // still within grace — skip
 
-        // All learners enrolled in this course
-        const learners = await UserModel.find({ course_id: activity.course_id, role: 'Learner' });
+        // All learners enrolled in this course according to the roster
+        const learners = await BrowniePointModel.find({ courseId: activity.course_id });
 
         for (const learner of learners) {
-            const user_id = learner.user_id;
+            const user_id = learner.studentId;
             const activity_id = activity.activity_id;
 
             // Already submitted?
@@ -75,19 +76,19 @@ async function processOverdue(work: OverdueWork): Promise<void> {
     const r: ActivityRules = rules ?? {};
 
     try {
-        if (r.overdue_penalty_percent) {
+        if (r.late_penalty_percent) {
             await applyPercentagePenalty(
                 user_id,
                 course_id,
-                r.overdue_penalty_percent,
+                r.late_penalty_percent,
                 activity_id,
                 `Did not complete mandatory activity: ${title}`,
             );
-        } else if (r.overdue_penalty_hp) {
+        } else if (r.late_penalty_hp) {
             await applyPenalty(
                 user_id,
                 course_id,
-                r.overdue_penalty_hp,
+                r.late_penalty_hp,
                 activity_id,
                 `Did not complete mandatory activity: ${title}`,
             );
