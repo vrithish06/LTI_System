@@ -293,8 +293,37 @@ export default function BrowniePointsDashboard({ context }: Props) {
       <header className="bp-header">
         <div className="header-content">
           <div className="header-text">
-            <h1>Brownie Points Overview</h1>
+            <h1>🍪 Brownie Points</h1>
             <p>Course <span>{courseName || 'Loading...'}</span></p>
+          </div>
+          {/* ── Export Buttons ── */}
+          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginLeft: 'auto', flexShrink: 0 }}>
+            <a
+              id="export-csv-btn"
+              href={`/api/lti/export/${courseId}?format=csv`}
+              download
+              className="btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', fontSize: '0.82rem', textDecoration: 'none', whiteSpace: 'nowrap', borderColor: 'hsl(142,50%,70%)', color: 'hsl(142,55%,32%)' }}
+              title="Download student BP data as CSV"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              CSV
+            </a>
+            <a
+              id="export-excel-btn"
+              href={`/api/lti/export/${courseId}?format=excel`}
+              download
+              className="btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', fontSize: '0.82rem', textDecoration: 'none', whiteSpace: 'nowrap', borderColor: 'hsl(215,70%,72%)', color: 'hsl(215,65%,40%)' }}
+              title="Download student BP data as Excel"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              Excel
+            </a>
           </div>
         </div>
       </header>
@@ -371,8 +400,8 @@ export default function BrowniePointsDashboard({ context }: Props) {
                   <th style={{ width: '40px', paddingRight: 0 }}>
                      <input type="checkbox" className="acr-checkbox" checked={selectedIds.length === filtered.length && filtered.length > 0} onChange={toggleSelectAll} />
                   </th>
-                  <th>Student Name</th>
-                  <th>Current BP</th>
+                  <th>Student</th>
+                  <th>Brownie Points</th>
                   <th>Status</th>
                   <th>Last Updated</th>
                 </tr>
@@ -394,7 +423,7 @@ export default function BrowniePointsDashboard({ context }: Props) {
                         </div>
                       </div>
                     </td>
-                    <td style={{ fontWeight: 600 }}>{rec.points}</td>
+                    <td style={{ fontWeight: 700, fontSize: '1rem', color: rec.points >= 0 ? 'hsl(142,55%,32%)' : 'var(--error)' }}>{rec.points} <span style={{ fontSize: '0.7rem', fontWeight: 500, color: 'var(--text-muted)' }}>BP</span></td>
                     <td>
                       <span className={`bp-badge px-3 ${rec.points >= 0 ? 'positive' : 'negative'}`}>
                         {rec.points >= 0 ? 'Healthy' : 'At Risk'}
@@ -417,7 +446,7 @@ export default function BrowniePointsDashboard({ context }: Props) {
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div>
-                <h2>Bulk Adjust Points</h2>
+                <h2>⚡ Bulk Adjust Points</h2>
                 <p className="modal-subtitle">Applying to {selectedIds.length} students</p>
               </div>
               <button className="btn-close" onClick={() => setIsBulkModalOpen(false)}>

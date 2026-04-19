@@ -9,9 +9,10 @@ interface ActivityRecord {
   title: string;
   type: string;
   deadline?: string;
-  grace_period?: number;
+  grace_period?: number;     // stored in minutes in backend
   is_mandatory?: boolean;
   is_proof_required?: boolean;
+  incentives?: string;       // Professor motivational text
   rules?: {
     reward_hp?: number;
     late_penalty_hp?: number;
@@ -43,6 +44,9 @@ interface Props {
 
 type SubmitState = 'idle' | 'submitting' | 'done' | 'error';
 
+/** Returns current UTC timestamp as a Date. Deadline stored in DB is UTC. */
+const nowUTC = () => new Date();
+
 export default function ActivityDetail({ context, onSuccess, onError }: Props) {
   const [activity, setActivity] = useState<ActivityRecord | null>(null);
   const [submission, setSubmission] = useState<SubmissionRecord | null>(null);
@@ -55,6 +59,9 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [confirmed, setConfirmed] = useState(false);
 
+  // Re-check deadlines on every render cycle via a tick state
+  const [tick, setTick] = useState(0);
+
   const activityId = context.activityId;
   const courseId = context.courseId;
   const userId = context.userId;
@@ -64,12 +71,17 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
     setTimeout(() => setToast(null), 4000);
   };
 
+  // Tick every 30s to re-evaluate strict deadline in real-time
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Load activity, submission history, and HP balance
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        // Use the public /lti/* routes — no shared secret needed from the browser
         const [actRes, subRes, hpRes] = await Promise.allSettled([
           axios.get(`/api/lti/course/${courseId}/activities`),
           axios.get(`/api/lti/submissions/${userId}/${courseId}`),
@@ -77,21 +89,18 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
         ]);
 
         if (actRes.status === 'fulfilled') {
-          // Response shape: { success, data: IActivity[] }
           const list: ActivityRecord[] = actRes.value.data.data || actRes.value.data.activities || [];
           const found = list.find((a: ActivityRecord) => a.activity_id === activityId);
           setActivity(found || null);
         }
 
         if (subRes.status === 'fulfilled') {
-          // Response shape: { success, data: ISubmission[] }
           const list: SubmissionRecord[] = subRes.value.data.data || subRes.value.data.submissions || [];
           const found = list.find((s: SubmissionRecord) => s.activity_id === activityId);
           setSubmission(found || null);
         }
 
         if (hpRes.status === 'fulfilled') {
-          // Response shape: { success, data: IHpBalance } or 404
           const bal = hpRes.value.data.data || hpRes.value.data.browniePoints || null;
           setHpBalance(bal);
         }
@@ -129,7 +138,6 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
 
       const { data } = await axios.post(`/api/lti/activities/${activityId}/submit`, reqData, { headers });
 
-      // Response shape: { success, data: { submission, status, hp_change, message } }
       const result = data.data || data;
       setHpChange(result.hp_change ?? 0);
       setSubmission(result.submission);
@@ -148,10 +156,8 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
       const serverMsg = err?.response?.data?.error;
       const status = err?.response?.status;
 
-      // 409 = already submitted — treat as success, refresh submission state
       if (status === 409) {
         showToast('Activity already submitted.', 'success');
-        // Reload submission data to reflect true state
         try {
           const subRes = await axios.get(`/api/lti/submissions/${userId}/${courseId}`);
           const list: SubmissionRecord[] = subRes.data.data || subRes.data.submissions || [];
@@ -171,17 +177,41 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
 
   const isCompleted = submission?.status === 'COMPLETED' || submission?.status === 'LATE';
 
-  const getISTTime = (date?: Date | string | null) => {
-    if (!date) return new Date();
-    const d = new Date(date);
-    return new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
-  };
-  const nowIST = getISTTime();
-  const deadlineIST = activity?.deadline ? getISTTime(activity.deadline) : null;
-  const isExpired = deadlineIST && nowIST > deadlineIST;
+  // ── Deadline / Grace logic (re-evaluated on every tick) ──────────────────
+  const now = nowUTC();
   const deadline = activity?.deadline ? new Date(activity.deadline) : null;
-  const isOverdue = isExpired;
-  const isLate = false; // Deadlines strictly enforced now
+
+  // grace_period is stored as minutes in backend
+  const gracePeriodMinutes = activity?.grace_period ?? 0;
+  const gracePeriodHours = gracePeriodMinutes / 60;
+  const strictDeadline = deadline
+    ? new Date(deadline.getTime() + gracePeriodMinutes * 60_000)
+    : null;
+
+  const isPastDeadline = deadline ? now > deadline : false;
+  const isPastStrictDeadline = strictDeadline ? now > strictDeadline : false;
+
+  // Student can still submit in grace window, but button is locked after strict deadline
+  const isSubmissionLocked = isPastStrictDeadline;
+  const isInGracePeriod = isPastDeadline && !isPastStrictDeadline;
+
+  // Estimated penalty if submitted now (during grace window)
+  const estimatedPenalty = (() => {
+    if (!isInGracePeriod || !deadline || gracePeriodHours === 0) return 0;
+    const hoursLate = (now.getTime() - deadline.getTime()) / 3_600_000;
+    const penaltyHp = activity?.rules?.late_penalty_hp ?? 0;
+    if (penaltyHp === 0) return 0;
+    return Math.round(((hoursLate / gracePeriodHours) * penaltyHp) * 100) / 100;
+  })();
+
+  const estimatedReward = (() => {
+    const base = activity?.rules?.reward_hp ?? 0;
+    if (!isInGracePeriod) return base;
+    return Math.max(0, Math.round((base - estimatedPenalty) * 100) / 100);
+  })();
+
+  // void tick — just referencing it ensures re-render when tick changes
+  void tick;
 
   if (loading) {
     return (
@@ -245,6 +275,19 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
                   />
                 </div>
               )}
+
+              {/* Grace period warning in modal */}
+              {isInGracePeriod && (
+                <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.35)', borderRadius: '8px', color: '#92400e' }}>
+                  <strong>⏳ Late Submission — Grace Period Active</strong>
+                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.875rem', lineHeight: 1.5 }}>
+                    You are submitting after the deadline. An estimated penalty of{' '}
+                    <strong>{estimatedPenalty} BP</strong> will be applied.
+                    <br />Estimated reward: <strong className="text-green">+{estimatedReward} BP</strong>
+                  </p>
+                </div>
+              )}
+
               <p style={{ color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: 1.6 }}>
                 ⚠️ By confirming, you declare that you have genuinely completed{' '}
                 <strong style={{ color: 'var(--text-primary)' }}>{activity.title}</strong>.
@@ -263,11 +306,6 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
                   </label>
                 </div>
               )}
-              {isExpired && (
-                <p className="text-orange" style={{ marginTop: '-0.75rem', marginBottom: '1.25rem', fontWeight: 500, color: 'red' }}>
-                  Deadline exceeded. You cannot submit this activity.
-                </p>
-              )}
               <div className="modal-actions">
                 <button className="btn-secondary" onClick={() => setConfirmOpen(false)} disabled={submitState === 'submitting'}>
                   Cancel
@@ -275,9 +313,9 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
                 <button
                   className="btn-primary"
                   onClick={handleSubmit}
-                  disabled={submitState === 'submitting' || isExpired || (activity.is_proof_required ? !proofFile : !confirmed)}
+                  disabled={submitState === 'submitting' || (activity.is_proof_required ? !proofFile : !confirmed)}
                 >
-                  {submitState === 'submitting' ? 'Submitting...' : "Submit Activity"}
+                  {submitState === 'submitting' ? 'Submitting...' : 'Submit Activity'}
                 </button>
               </div>
             </div>
@@ -290,18 +328,20 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
         <div className="header-content">
           <div className="header-text">
             <h1 style={{ fontSize: '1.5rem' }}>{activity.title}</h1>
-            <p>
-              {activity.type?.replace(/_/g, ' ')}
+            <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '999px', background: 'var(--primary-bg)', border: '1px solid hsl(38,70%,80%)', color: 'var(--primary-dark)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                {activity.type?.replace(/_/g, ' ')}
+              </span>
               {activity.is_mandatory && (
-                <span className="tag-pill tag-red" style={{ marginLeft: '0.5rem' }}>Required</span>
+                <span className="tag-pill tag-red" style={{ marginLeft: '0.25rem' }}>Required</span>
               )}
             </p>
           </div>
           {hpBalance && (
-            <div className="stat-card" style={{ marginLeft: 'auto', minWidth: 'auto', padding: '0.75rem 1.25rem' }}>
+            <div className="stat-card" style={{ marginLeft: 'auto', minWidth: 'auto', padding: '0.75rem 1.25rem', background: 'linear-gradient(135deg, hsl(142,60%,95%), hsl(142,50%,92%))', border: '1px solid hsl(142,50%,80%)' }}>
               <div className="stat-info">
                 <span className="stat-label">Your BP Balance</span>
-                <span className="stat-value text-green">{Math.round(hpBalance.current_hp)} BP</span>
+                <span className="stat-value" style={{ fontSize: '1.4rem', color: 'hsl(142,55%,32%)' }}>{Math.round(hpBalance.current_hp * 100) / 100} <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'hsl(142,40%,48%)' }}>BP</span></span>
               </div>
             </div>
           )}
@@ -309,7 +349,7 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
       </header>
 
       <main className="bp-main-container">
-        {/* Status banner */}
+        {/* ── Status banner ── */}
         {isCompleted ? (
           <div className="notice-banner notice-green">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -317,7 +357,7 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
             </svg>
             <div>
               <strong>
-                {isLate ? 'Submitted Late' : 'Completed!'}
+                {submission?.status === 'LATE' ? 'Submitted Late (Grace Period)' : 'Completed!'}
               </strong>
               {submission?.submitted_at && (
                 <span style={{ marginLeft: '0.5rem', opacity: 0.75 }}>
@@ -331,38 +371,71 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
               )}
             </div>
           </div>
-        ) : isOverdue ? (
+        ) : isSubmissionLocked ? (
           <div className="notice-banner notice-red">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
             <div>
-              <strong>Deadline Passed</strong>
-              <span style={{ marginLeft: '0.5rem', opacity: 0.75 }}>
-                — Late submissions may still be recorded with a BP penalty.
+              <strong>Submission closed. Strict deadline has passed.</strong>
+              {activity.is_mandatory && (
+                <span style={{ marginLeft: '0.5rem', opacity: 0.75 }}>
+                  — A penalty of {activity.rules?.late_penalty_hp ?? 0} BP has been recorded.
+                </span>
+              )}
+            </div>
+          </div>
+        ) : isInGracePeriod ? (
+          <div className="notice-banner" style={{ background: 'rgba(234,179,8,0.12)', borderColor: 'rgba(234,179,8,0.35)', color: '#92400e' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+            </svg>
+            <div>
+              <strong>Grace Period Active</strong>
+              <span style={{ marginLeft: '0.5rem', opacity: 0.85 }}>
+                — Submit before{' '}
+                {strictDeadline?.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.
+                Estimated penalty: <strong>{estimatedPenalty} BP</strong>.
               </span>
             </div>
           </div>
         ) : null}
 
-        {/* Stats row */}
+        {/* ── Stats row ── */}
         <div className="stats-grid">
           {/* Deadline */}
           <div className="stat-card">
-            <div className={`stat-icon ${isOverdue ? 'icon-red' : 'icon-purple'}`}>
+            <div className={`stat-icon ${isSubmissionLocked ? 'icon-red' : isPastDeadline ? 'icon-orange' : 'icon-purple'}`}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
               </svg>
             </div>
             <div className="stat-info">
               <span className="stat-label">Deadline</span>
-              <span className={`stat-value ${isOverdue ? 'text-red' : 'text-purple'}`} style={{ fontSize: '1rem' }}>
+              <span className={`stat-value ${isSubmissionLocked ? 'text-red' : isPastDeadline ? 'text-orange' : 'text-purple'}`} style={{ fontSize: '1rem' }}>
                 {deadline
                   ? deadline.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                   : 'No deadline'}
               </span>
             </div>
           </div>
+
+          {/* Grace Period */}
+          {gracePeriodHours > 0 && (
+            <div className="stat-card">
+              <div className={`stat-icon ${isInGracePeriod ? 'icon-orange' : 'icon-purple'}`}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                </svg>
+              </div>
+              <div className="stat-info">
+                <span className="stat-label">Grace Period</span>
+                <span className={`stat-value ${isInGracePeriod ? 'text-orange' : 'text-purple'}`} style={{ fontSize: '1rem' }}>
+                  {gracePeriodHours}h window
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Reward */}
           {activity.rules?.reward_hp && (
@@ -374,7 +447,11 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
               </div>
               <div className="stat-info">
                 <span className="stat-label">Reward</span>
-                <span className="stat-value text-green">+{activity.rules.reward_hp} BP</span>
+                <span className="stat-value text-green">
+                  {isInGracePeriod
+                    ? `+${estimatedReward} BP (est.)`
+                    : `+${activity.rules.reward_hp} BP`}
+                </span>
               </div>
             </div>
           )}
@@ -390,16 +467,43 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
               <div className="stat-info">
                 <span className="stat-label">Late Penalty</span>
                 <span className="stat-value text-orange">
-                  {activity.rules.late_penalty_percent
+                  {activity.rules?.late_penalty_percent
                     ? `-${activity.rules.late_penalty_percent}%`
-                    : `-${activity.rules.late_penalty_hp} BP`}
+                    : `-${activity.rules?.late_penalty_hp} BP`}
                 </span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Description / completion area */}
+        {/* ── Professor Incentives / Motivation section ── */}
+        {activity.incentives && activity.incentives.trim() && (
+          <div style={{
+            margin: '0 0 1.5rem',
+            padding: '1.25rem 1.5rem',
+            background: 'linear-gradient(135deg, rgba(139,92,246,0.10) 0%, rgba(59,130,246,0.08) 100%)',
+            border: '1px solid rgba(139,92,246,0.25)',
+            borderRadius: '12px',
+            position: 'relative',
+            overflow: 'hidden',
+          }}>
+            {/* Decorative star */}
+            <span style={{ position: 'absolute', top: '12px', right: '16px', fontSize: '1.5rem', opacity: 0.3 }}>⭐</span>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+              <span style={{ fontSize: '1.4rem', lineHeight: 1, flexShrink: 0 }}>🎯</span>
+              <div>
+                <h3 style={{ margin: '0 0 0.4rem', fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.01em' }}>
+                  Motivation from your Instructor
+                </h3>
+                <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: 1.65, whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>
+                  {activity.incentives}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Description / completion area ── */}
         <div className="table-container" style={{ padding: '1.5rem', minHeight: 'auto' }}>
           <div style={{ maxWidth: '640px', margin: '0 auto' }}>
             <h3 style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: '0.5rem' }}>
@@ -407,23 +511,33 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
             </h3>
             <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: '2rem' }}>
               Complete this activity and confirm your submission below. Your Brownie Points will be
-              updated automatically based on whether the submission is on time or late.
+              updated automatically based on whether the submission is on time, within the grace period, or late.
+              {gracePeriodHours > 0 && (
+                <> Submissions after the deadline but within the <strong>{gracePeriodHours}-hour grace window</strong> will
+                receive a proportionally reduced reward.</>
+              )}
             </p>
 
-            {/* Submit / Already done */}
+            {/* Submit / Already done / Locked */}
             {isCompleted ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#16a34a', fontWeight: 600 }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
-                You have  submitted this activity.
+                You have submitted this activity.
               </div>
-            ) : isExpired ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'red', fontWeight: 600 }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
-                </svg>
-                Expired. You cannot submit this activity.
+            ) : isSubmissionLocked ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: '1.25rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#dc2626', fontWeight: 700, fontSize: '1rem' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  Submission closed. Strict deadline has passed.
+                </div>
+                <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                  The grace period of {gracePeriodHours} hour{gracePeriodHours !== 1 ? 's' : ''} has also elapsed.
+                  {activity.is_mandatory && ` A penalty of ${activity.rules?.late_penalty_hp ?? 0} BP has been automatically recorded.`}
+                </p>
               </div>
             ) : submitState === 'submitting' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--text-secondary)' }}>
@@ -431,20 +545,30 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
                 Submitting…
               </div>
             ) : (
-              <button
-                className="btn-primary"
-                style={{ padding: '0.75rem 2rem', fontSize: '1rem' }}
-                onClick={() => {
-                  setProofFile(null);
-                  setConfirmed(false);
-                  setConfirmOpen(true);
-                }}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '0.5rem' }}>
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                I've Completed This Activity
-              </button>
+              <div>
+                {isInGracePeriod && (
+                  <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(234,179,8,0.10)', border: '1px solid rgba(234,179,8,0.30)', borderRadius: '8px', fontSize: '0.875rem', color: '#92400e' }}>
+                    <strong>⏳ Late submission:</strong> Estimated BP reward is{' '}
+                    <strong className="text-green">+{estimatedReward} BP</strong>{' '}
+                    (base {activity.rules?.reward_hp ?? 0} BP − ~{estimatedPenalty} BP penalty).
+                  </div>
+                )}
+                <button
+                  id="submit-activity-btn"
+                  className="btn-primary"
+                  style={{ padding: '0.75rem 2rem', fontSize: '1rem' }}
+                  onClick={() => {
+                    setProofFile(null);
+                    setConfirmed(false);
+                    setConfirmOpen(true);
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '0.5rem' }}>
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  {isInGracePeriod ? "Submit (Grace Period — Late)" : "I've Completed This Activity"}
+                </button>
+              </div>
             )}
           </div>
         </div>

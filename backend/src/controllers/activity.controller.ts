@@ -40,6 +40,7 @@ export class ActivityController {
             const courseId = body.courseId || body.course_id;
             const courseVersionId = body.courseVersionId;
             const context = body.context;
+            const incentives = body.incentives || '';
 
             if (!courseId || !title || !activityType) {
                 const missing = [];
@@ -85,6 +86,7 @@ export class ActivityController {
                 rules,
                 is_mandatory: mandatory !== false,
                 is_proof_required: body.isProofRequired === true,
+                incentives: body.incentives || '',
             });
 
             // 4. Generate Deep Linking JWT if in deep-linking mode
@@ -288,6 +290,7 @@ export class ActivityController {
                 rules: Object.keys(rules).length > 0 ? rules : undefined,
                 is_mandatory: body.mandatory !== undefined ? body.mandatory : undefined,
                 is_proof_required: body.isProofRequired !== undefined ? body.isProofRequired : undefined,
+                incentives: body.incentives !== undefined ? body.incentives : undefined,
             });
 
             if (!updated) {

@@ -96,6 +96,8 @@ export interface ActivityRules {
     overdue_penalty_percent?: number;
     // VIBE_MILESTONE: the course completion % that triggers BP award
     target_percent?:         number;
+    // Grace-period penalty computed at submission time
+    grace_penalty_hp?:       number;
 }
 
 export interface IActivity extends Document {
@@ -220,3 +222,28 @@ ProcessedOverdueSchema.index({ user_id: 1, activity_id: 1 }, { unique: true });
 
 export const ProcessedOverdueModel =
     mongoose.models.ProcessedOverdue || model<IProcessedOverdue>('ProcessedOverdue', ProcessedOverdueSchema);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. Course Incentives (instructor-published motivation text, per course)
+// ─────────────────────────────────────────────────────────────────────────────
+export interface ICourseIncentives extends Document {
+    course_id:    string;
+    content:      string;   // The rich incentive text written by the instructor
+    is_published: boolean;  // true = visible to students
+    updated_at:   Date;
+    updated_by?:  string;   // instructor userId who last edited
+}
+
+const CourseIncentivesSchema = new Schema<ICourseIncentives>(
+    {
+        course_id:    { type: String,  required: true, unique: true },
+        content:      { type: String,  default: '' },
+        is_published: { type: Boolean, default: false },
+        updated_at:   { type: Date,    default: () => new Date() },
+        updated_by:   { type: String,  default: null },
+    },
+    { collection: 'course_incentives' }
+);
+
+export const CourseIncentivesModel =
+    mongoose.models.CourseIncentives || model<ICourseIncentives>('CourseIncentives', CourseIncentivesSchema);

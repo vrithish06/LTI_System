@@ -7,6 +7,7 @@ import ActivityCreator from '../ActivityCreator';
 import ActivitiesList from './ActivitiesList';
 import InstructorActivitiesManager from './InstructorActivitiesManager';
 import ActivityDetail from './ActivityDetail';
+import { InstructorIncentivesPanel, StudentIncentivesView } from './CourseIncentives';
 import type { ActivityRecord } from './ActivitiesTypes';
 import '../index.css';
 
@@ -14,16 +15,15 @@ interface Props {
   context: LtiContext;
 }
 
-type Section = 'bp' | 'add_activity' | 'activities';
+type Section = 'bp' | 'add_activity' | 'activities' | 'incentives';
 
 export default function Dashboard({ context }: Props) {
   const isInstructor = context.role === 'Instructor';
 
-  // Instructors default to Brownie Points management; students default to Activities list
   const defaultSection: Section = isInstructor ? 'bp' : 'activities';
   const [activeSection, setActiveSection] = useState<Section>(defaultSection);
   const [selectedActivity, setSelectedActivity] = useState<ActivityRecord | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false); // for mobile
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [courseName, setCourseName] = useState(context.courseName || '');
 
   useEffect(() => {
@@ -48,7 +48,7 @@ export default function Dashboard({ context }: Props) {
     setSidebarOpen(false);
   };
 
-  const navItems: { id: Section; label: string; icon: JSX.Element; teacherOnly?: boolean }[] = [
+  const navItems: { id: Section; label: string; icon: JSX.Element; teacherOnly?: boolean; studentOnly?: boolean }[] = [
     {
       id: 'bp',
       label: isInstructor ? 'Manage BP' : 'My BP',
@@ -84,14 +84,26 @@ export default function Dashboard({ context }: Props) {
         </svg>
       ),
     },
+    {
+      id: 'incentives',
+      label: 'BP Incentives',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+      ),
+    },
   ];
 
-  const visibleNavItems = navItems.filter(item => !item.teacherOnly || isInstructor);
+  const visibleNavItems = navItems.filter(item => {
+    if (item.teacherOnly && !isInstructor) return false;
+    if (item.studentOnly && isInstructor) return false;
+    return true;
+  });
 
   const renderContent = () => {
     // If an activity is selected from the list, show ActivityDetail
     if (selectedActivity && activeSection === 'activities') {
-      // Inject the activityId into context so ActivityDetail can load it
       const detailContext: LtiContext = {
         ...context,
         activityId: selectedActivity.activity_id,
@@ -115,6 +127,7 @@ export default function Dashboard({ context }: Props) {
         return isInstructor
           ? <BrowniePointsDashboard context={context} />
           : <StudentBPDashboard context={context} />;
+
       case 'add_activity':
         if (!isInstructor) return null;
         return (
@@ -132,9 +145,8 @@ export default function Dashboard({ context }: Props) {
             />
           </div>
         );
+
       case 'activities':
-        // Instructors see the full management view (edit/delete/create)
-        // Students see the submission/detail view
         if (isInstructor) {
           return (
             <div className="dashboard-content-area">
@@ -150,6 +162,24 @@ export default function Dashboard({ context }: Props) {
             <ActivitiesList context={context} onOpenActivity={handleOpenActivity} />
           </div>
         );
+
+      case 'incentives':
+        return (
+          <div className="dashboard-content-area">
+            <div className="dashboard-page-header" style={{ marginBottom: '1.5rem' }}>
+              <h1>{isInstructor ? 'Manage BP Incentives' : 'BP Incentives'}</h1>
+              <p>
+                {isInstructor
+                  ? 'Write and publish motivational rewards visible to all students in this course.'
+                  : 'View the rewards and incentives your instructor has set for this course.'}
+              </p>
+            </div>
+            {isInstructor
+              ? <InstructorIncentivesPanel context={context} />
+              : <StudentIncentivesView context={context} />}
+          </div>
+        );
+
       default:
         return null;
     }
@@ -211,6 +241,7 @@ export default function Dashboard({ context }: Props) {
               <span className="sidebar-nav-icon">{item.icon}</span>
               <span className="sidebar-nav-label-text">{item.label}</span>
               {activeSection === item.id && <span className="sidebar-nav-indicator" />}
+              {/* For students: small "NEW" badge if incentives exist — future enhancement */}
             </button>
           ))}
         </nav>

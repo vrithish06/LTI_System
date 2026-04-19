@@ -18,7 +18,7 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
     rewardType: 'ABSOLUTE',
     rewardValue: '10',
     mandatory: false,
-    penaltyType: 'PERCENTAGE',
+    penaltyType: 'ABSOLUTE',
     penaltyValue: '0',
     submissionMode: 'IN_PLATFORM',
     status: 'PUBLISHED',
@@ -259,8 +259,8 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
                 <div className="acr-field">
                   <label className="acr-label">Penalty Type</label>
                   <select name="penaltyType" value={formData.penaltyType} onChange={handleChange} className="acr-input">
+                    <option value="ABSOLUTE">Fixed (Absolute BP)</option>
                     <option value="PERCENTAGE">Percentage (%)</option>
-                    <option value="ABSOLUTE">Absolute (Fixed BP)</option>
                   </select>
                 </div>
                 <div className="acr-field">

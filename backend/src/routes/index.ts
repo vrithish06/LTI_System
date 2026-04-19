@@ -242,6 +242,111 @@ router.patch('/bp/:courseId/:studentId', bpController.adjustPointsForStudent.bin
 router.post('/bp/sync/:courseId', bpController.manuallySyncRoster.bind(bpController));
 
 // ─────────────────────────────────────────────────────────────────
+// DATA EXPORT  (CSV / Excel for course dashboard)
+// GET /api/lti/export/:courseId?format=csv|excel
+// Returns: Student Name, Student Email, Current BP
+// ─────────────────────────────────────────────────────────────────
+router.get('/lti/export/:courseId', async (req: Request, res: Response) => {
+    try {
+        const { courseId } = req.params;
+        const format = (req.query.format as string || 'csv').toLowerCase();
+
+        const { connectDB } = await import('../db/connection.js');
+        await connectDB();
+
+        const { BrowniePointModel } = await import('../models/BrowniePoint.js');
+        const bpRecords = await BrowniePointModel.find({ courseId }).lean();
+
+        // Build simplified rows: Name, Email, BP only
+        const rows = bpRecords.map((r: any) => ({
+            'Student Name': r.studentName || '',
+            'Student Email': r.studentEmail || '',
+            'Current BP': typeof r.points === 'number' ? Math.round(r.points * 100) / 100 : 0,
+        }));
+
+        const headers = ['Student Name', 'Student Email', 'Current BP'];
+
+        if (format === 'excel') {
+            const tsv = [
+                headers.join('\t'),
+                ...rows.map(r => headers.map(h => String((r as any)[h]).replace(/\t/g, ' ')).join('\t')),
+            ].join('\n');
+            res.setHeader('Content-Type', 'application/vnd.ms-excel');
+            res.setHeader('Content-Disposition', `attachment; filename="brownie_points_${courseId}.xls"`);
+            res.send('\uFEFF' + tsv);
+        } else {
+            const escape = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+            const csv = [
+                headers.map(escape).join(','),
+                ...rows.map(r => headers.map(h => escape(String((r as any)[h]))).join(',')),
+            ].join('\n');
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="brownie_points_${courseId}.csv"`);
+            res.send('\uFEFF' + csv);
+        }
+    } catch (err: any) {
+        console.error('[Export] Error:', err.message);
+        res.status(500).json({ error: 'Export failed', detail: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// COURSE INCENTIVES (per-course, instructor publish workflow)
+// GET    /api/lti/incentives/:courseId          — fetch (instructor: draft+published; student: published only)
+// PUT    /api/lti/incentives/:courseId          — save draft (instructor)
+// PATCH  /api/lti/incentives/:courseId/publish  — toggle publish (instructor)
+// ─────────────────────────────────────────────────────────────────
+
+// GET — returns the incentives doc for a course
+router.get('/lti/incentives/:courseId', async (req: Request, res: Response) => {
+    try {
+        const { connectDB } = await import('../db/connection.js');
+        await connectDB();
+        const { CourseIncentivesModel } = await import('../models/index.js');
+        const doc = await CourseIncentivesModel.findOne({ course_id: req.params.courseId }).lean();
+        res.json({ success: true, data: doc || { course_id: req.params.courseId, content: '', is_published: false } });
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to fetch incentives', detail: err.message });
+    }
+});
+
+// PUT — save draft content (instructor)
+router.put('/lti/incentives/:courseId', async (req: Request, res: Response) => {
+    try {
+        const { connectDB } = await import('../db/connection.js');
+        await connectDB();
+        const { CourseIncentivesModel } = await import('../models/index.js');
+        const { content, userId } = req.body;
+        const doc = await CourseIncentivesModel.findOneAndUpdate(
+            { course_id: req.params.courseId },
+            { $set: { content: content || '', updated_at: new Date(), updated_by: userId || null } },
+            { upsert: true, new: true }
+        );
+        res.json({ success: true, data: doc });
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to save incentives', detail: err.message });
+    }
+});
+
+// PATCH — toggle publish state (instructor)
+router.patch('/lti/incentives/:courseId/publish', async (req: Request, res: Response) => {
+    try {
+        const { connectDB } = await import('../db/connection.js');
+        await connectDB();
+        const { CourseIncentivesModel } = await import('../models/index.js');
+        const { is_published, userId } = req.body;
+        const doc = await CourseIncentivesModel.findOneAndUpdate(
+            { course_id: req.params.courseId },
+            { $set: { is_published: !!is_published, updated_at: new Date(), updated_by: userId || null } },
+            { upsert: true, new: true }
+        );
+        res.json({ success: true, data: doc });
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to update publish state', detail: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────
 // DIAGNOSTICS & HEALTH EXPORT
 // ─────────────────────────────────────────────────────────────────
 router.get('/health', (_req: Request, res: Response): void => {

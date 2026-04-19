@@ -1446,6 +1446,7 @@ textarea.ia-input { resize: vertical; min-height: 56px; }
    ════════════════════════════════════════════ */
 .activity-creator-form {
   max-width: 700px;
+  margin: 0 auto;
 }
 
 .acr-header {
