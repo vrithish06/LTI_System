@@ -175,17 +175,29 @@ export async function submitActivity(params: {
         }
 
         if (nowMs > deadlineMs) {
-            // Within grace period window — mark LATE and compute proportional penalty
+            // Within grace period window — mark LATE and compute exact proportional penalty fee
             status = 'LATE';
             const hoursLate = (nowMs - deadlineMs) / 3_600_000;  // in hours
             const totalGraceHours = gracePeriodMs / 3_600_000;
             const penaltyValue = (rules.late_penalty_hp ?? 0) > 0
                 ? (rules.late_penalty_hp as number)
                 : 0;
+                
             if (totalGraceHours > 0 && penaltyValue > 0) {
-                gracePenaltyHp = Math.round(((hoursLate / totalGraceHours) * penaltyValue) * 100) / 100;
+                gracePenaltyHp = Math.round((hoursLate / totalGraceHours) * penaltyValue * 100) / 100;
             }
             console.log(`[Grace Period] hoursLate=${hoursLate.toFixed(2)} gracePenaltyHp=${gracePenaltyHp}`);
+
+            // NEW: Enforce BP sufficiency for Late Fee!
+            if (gracePenaltyHp > 0) {
+                const { BrowniePointModel } = await import('../models/BrowniePoint.js');
+                const existingBp = await BrowniePointModel.findOne({ studentId: user_id, courseId: course_id });
+                const currentBalance = existingBp ? existingBp.points : 0;
+                
+                if (currentBalance < gracePenaltyHp) {
+                    throw new Error(`Insufficient BP. You need ${gracePenaltyHp} BP to unlock this late submission, but you only have ${currentBalance} BP.`);
+                }
+            }
         }
     }
 
@@ -215,14 +227,16 @@ export async function submitActivity(params: {
     let hp_change = 0;
     let ledger_id: string | undefined;
 
+    let baseReward = 0;
+    if (rules.score_to_hp_multiplier && score != null && score_max) {
+        baseReward = Math.round((score / score_max) * rules.score_to_hp_multiplier);
+    } else if (rules.reward_hp) {
+        baseReward = rules.reward_hp;
+    }
+
     if (status === 'COMPLETED') {
         // On-time: full reward
-        if (rules.score_to_hp_multiplier && score != null && score_max) {
-            hp_change = Math.round((score / score_max) * rules.score_to_hp_multiplier);
-        } else if (rules.reward_hp) {
-            hp_change = rules.reward_hp;
-        }
-
+        hp_change = baseReward;
         if (hp_change > 0) {
             const entry = await applyReward(
                 user_id,
@@ -234,24 +248,26 @@ export async function submitActivity(params: {
             ledger_id = (entry._id as any).toString();
         }
     } else if (status === 'LATE') {
-        // Grace period: apply formula Reward - (lateHours/graceHours) × Penalty
-        let baseReward = 0;
-        if (rules.score_to_hp_multiplier && score != null && score_max) {
-            baseReward = Math.round((score / score_max) * rules.score_to_hp_multiplier);
-        } else if (rules.reward_hp) {
-            baseReward = rules.reward_hp;
+        // Grace period: Dual transaction model
+        hp_change = baseReward; // Net returned to UI just as info
+
+        if (gracePenaltyHp > 0) {
+            await applyPenalty(
+                user_id,
+                course_id,
+                gracePenaltyHp,
+                activity_id,
+                `Late submission fee — ${activity.title}`,
+            );
         }
 
-        const calculatedReward = Math.round((baseReward - gracePenaltyHp) * 100) / 100;
-        hp_change = Math.max(0, calculatedReward);  // never negative from this formula
-
-        if (hp_change > 0) {
+        if (baseReward > 0) {
             const entry = await applyReward(
                 user_id,
                 course_id,
-                hp_change,
+                baseReward,
                 activity_id,
-                `Late submission (grace period): ${activity.title} — Penalty applied: ${gracePenaltyHp} HP`,
+                `Assignment completed — ${activity.title}`,
             );
             ledger_id = (entry._id as any).toString();
         }
@@ -265,7 +281,7 @@ export async function submitActivity(params: {
         message:
             status === 'COMPLETED'
                 ? `Submission accepted. BP: +${hp_change}`
-                : `Late submission recorded (grace period). BP awarded: +${hp_change} (penalty: -${gracePenaltyHp})`,
+                : `Late submission successful! Paid ${gracePenaltyHp} BP fee, earned ${baseReward} BP reward.`,
     };
 }
 

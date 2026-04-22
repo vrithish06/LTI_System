@@ -50,9 +50,23 @@ export default function App() {
       return;
     }
 
+    // Try loading from session cache to avoid repeating /launch and survive token expiration on reload
+    const cacheKey = `lti_context_${token}`;
+    const cachedStr = sessionStorage.getItem(cacheKey);
+    if (cachedStr) {
+      try {
+        setContext(JSON.parse(cachedStr));
+        setState('ready');
+        return;
+      } catch (e) {
+        sessionStorage.removeItem(cacheKey);
+      }
+    }
+
     axios
       .post('/api/launch', { token })
       .then((res) => {
+        sessionStorage.setItem(cacheKey, JSON.stringify(res.data.context));
         setContext(res.data.context);
         setState('ready');
       })

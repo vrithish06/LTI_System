@@ -196,7 +196,7 @@ function CompletedCard({
               <div className="al-detail-tile al-detail-full">
                 <span className="al-detail-label">Proof Submitted</span>
                 <a
-                  href={submission.proof_url}
+                  href={submission.proof_url.startsWith('http') ? submission.proof_url : `/api/lti/proof/${submission.proof_url}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="al-proof-link"
@@ -268,10 +268,18 @@ export default function ActivitiesList({ context, onOpenActivity }: Props) {
     [submissions],
   );
 
-  const { pending, completed } = useMemo(() => ({
-    pending:   activities.filter(a => !a.is_submitted),
-    completed: activities.filter(a =>  a.is_submitted),
-  }), [activities]);
+  const { pending, completed } = useMemo(() => {
+    const now = new Date().getTime();
+    return {
+      pending: activities.filter(a => {
+        if (a.is_submitted) return false;
+        if (!a.deadline) return true;
+        const dl = new Date(a.deadline).getTime();
+        return now <= dl; // Only show if NOT late
+      }),
+      completed: activities.filter(a => a.is_submitted),
+    };
+  }, [activities]);
 
   const total = activities.length;
   const doneCount = completed.length;

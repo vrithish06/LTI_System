@@ -17,7 +17,7 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
     deadline: '',
     rewardType: 'ABSOLUTE',
     rewardValue: '10',
-    mandatory: false,
+    mandatory: true,
     penaltyType: 'ABSOLUTE',
     penaltyValue: '0',
     submissionMode: 'IN_PLATFORM',

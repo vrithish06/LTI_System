@@ -7,6 +7,7 @@ import ActivityCreator from '../ActivityCreator';
 import ActivitiesList from './ActivitiesList';
 import InstructorActivitiesManager from './InstructorActivitiesManager';
 import ActivityDetail from './ActivityDetail';
+import BPStore from './BPStore';
 import { InstructorIncentivesPanel, StudentIncentivesView } from './CourseIncentives';
 import type { ActivityRecord } from './ActivitiesTypes';
 import '../index.css';
@@ -15,7 +16,7 @@ interface Props {
   context: LtiContext;
 }
 
-type Section = 'bp' | 'add_activity' | 'activities' | 'incentives';
+type Section = 'bp' | 'add_activity' | 'activities' | 'incentives' | 'bp_store';
 
 export default function Dashboard({ context }: Props) {
   const isInstructor = context.role === 'Instructor';
@@ -81,6 +82,18 @@ export default function Dashboard({ context }: Props) {
           <line x1="16" y1="13" x2="8" y2="13" />
           <line x1="16" y1="17" x2="8" y2="17" />
           <polyline points="10 9 9 9 8 9" />
+        </svg>
+      ),
+    },
+    {
+      id: 'bp_store',
+      label: 'BP Store',
+      studentOnly: true,
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="9" cy="21" r="1"></circle>
+          <circle cx="20" cy="21" r="1"></circle>
+          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
         </svg>
       ),
     },
@@ -160,6 +173,13 @@ export default function Dashboard({ context }: Props) {
         return (
           <div className="dashboard-content-area">
             <ActivitiesList context={context} onOpenActivity={handleOpenActivity} />
+          </div>
+        );
+
+      case 'bp_store':
+        return (
+          <div className="dashboard-content-area">
+            <BPStore context={context} />
           </div>
         );
 

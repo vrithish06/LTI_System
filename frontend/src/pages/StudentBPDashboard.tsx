@@ -120,39 +120,41 @@ export default function StudentBPDashboard({ context }: Props) {
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '28px 24px' }}>
         {/* Score Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '32px' }}>
-          {/* My Score */}
+          {/* Score card */}
           <div style={{
-            background: '#fff', borderRadius: 16, padding: '28px 24px',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid var(--border)',
+            background: 'linear-gradient(135deg, #f59e0b10, #d9770605)',
+            borderRadius: 16, padding: '28px 24px',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.04)', border: '1px solid #f59e0b25',
             textAlign: 'center',
           }}>
             <div style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: 8 }}>
               YOUR SCORE
             </div>
-            <div style={{ fontSize: '4rem', fontWeight: 900, color: '#f59e0b', lineHeight: 1 }}>
-              {points}
+            <div style={{ fontSize: '4.5rem', fontWeight: 900, color: '#f59e0b', lineHeight: 1, letterSpacing: '-0.02em' }}>
+              {Number(points.toFixed(2))}
             </div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 12 }}>Brownie Points</div>
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: 12 }}>Brownie Points</div>
             <span style={{
-              display: 'inline-block', padding: '4px 14px', borderRadius: 20,
-              fontSize: '0.78rem', fontWeight: 700,
+              display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 14px', borderRadius: 20,
+              fontSize: '0.8rem', fontWeight: 700,
               background: `${status.color}20`, color: status.color,
             }}>
               {status.label}
             </span>
           </div>
 
-          {/* Class Average */}
+          {/* Average compare */}
           <div style={{
-            background: '#fff', borderRadius: 16, padding: '28px 24px',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid var(--border)',
+            background: 'linear-gradient(135deg, #6366f110, #4f46e505)',
+            borderRadius: 16, padding: '28px 24px',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.04)', border: '1px solid #6366f120',
             textAlign: 'center',
           }}>
             <div style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: 8 }}>
               CLASS AVERAGE
             </div>
             <div style={{ fontSize: '4rem', fontWeight: 900, color: '#6366f1', lineHeight: 1 }}>
-              {classAvg}
+              {Number(classAvg.toFixed(2))}
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 12 }}>Brownie Points</div>
             <span style={{
@@ -234,7 +236,7 @@ export default function StudentBPDashboard({ context }: Props) {
                           background: h.delta >= 0 ? '#10b98115' : '#ef444415',
                           color: h.delta >= 0 ? '#10b981' : '#ef4444',
                         }}>
-                          {h.delta >= 0 ? '+' : ''}{h.delta} BP
+                          {h.delta >= 0 ? '+' : ''}{Number(Number(h.delta).toFixed(2))} BP
                         </span>
                       </td>
                       <td style={{ padding: '14px 20px', fontSize: '0.85rem', color: 'var(--text-primary)', maxWidth: 300 }}>
