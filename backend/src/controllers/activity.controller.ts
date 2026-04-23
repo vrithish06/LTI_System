@@ -59,12 +59,20 @@ export class ActivityController {
             const activity_id = req.body.activity_id || 
                 `${courseId.toLowerCase()}-${title.toLowerCase().replace(/\s+/g, '-')}-${Date.now().toString().slice(-4)}`;
 
+            // Parse mandatory early so it can be used in rules
+            const isMandatory =
+                mandatory === true || mandatory === 'true'
+                    ? true
+                    : mandatory === false || mandatory === 'false'
+                        ? false
+                        : true; // default ON
+
             // 2. Construct rules object for HP engine
             const rules: Record<string, any> = {
                 reward_hp: Number(rewardValue) || 10,
                 reward_type: rewardType || 'ABSOLUTE',
-                late_penalty_hp: mandatory && penaltyType === 'ABSOLUTE' ? Number(penaltyValue) : 0,
-                late_penalty_percent: mandatory && penaltyType === 'PERCENTAGE' ? Number(penaltyValue) : 0,
+                late_penalty_hp: isMandatory && penaltyType === 'ABSOLUTE' ? Number(penaltyValue) : 0,
+                late_penalty_percent: isMandatory && penaltyType === 'PERCENTAGE' ? Number(penaltyValue) : 0,
                 hp_assignment_mode: hpAssignmentMode || 'AUTOMATIC',
                 submission_mode: submissionMode || 'IN_PLATFORM',
                 description: description || '',
@@ -75,6 +83,13 @@ export class ActivityController {
                 rules.target_percent = Number(body.targetPercent);
             }
 
+            // Helper: FormData sends booleans as strings "true"/"false"
+            const parseBool = (v: any, fallback = false): boolean => {
+                if (v === true || v === 'true') return true;
+                if (v === false || v === 'false') return false;
+                return fallback;
+            };
+
             // 3. Persist in LTI database
             const activity = await registerActivity({
                 activity_id,
@@ -84,8 +99,8 @@ export class ActivityController {
                 deadline,
                 grace_period: Number(gracePeriodDuration) * 60,
                 rules,
-                is_mandatory: mandatory !== false,
-                is_proof_required: body.isProofRequired === true,
+                is_mandatory: parseBool(mandatory, true),
+                is_proof_required: parseBool(body.isProofRequired, false),
                 incentives: body.incentives || '',
                 document_url: body.document_url || undefined,
                 document_name: body.document_name || undefined,
