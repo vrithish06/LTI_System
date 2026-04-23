@@ -41,6 +41,12 @@ export default function BrowniePointsDashboard({ context }: Props) {
   const [updating, setUpdating] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
+  // History filters (detail view)
+  const [histFilterType, setHistFilterType] = useState<'ALL' | 'Bonus' | 'Penalty' | 'Manual'>('ALL');
+  const [histFilterFrom, setHistFilterFrom] = useState('');
+  const [histFilterTo, setHistFilterTo] = useState('');
+  const [histSearch, setHistSearch] = useState('');
+
   const courseId = context.courseId;
 
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
@@ -196,7 +202,7 @@ export default function BrowniePointsDashboard({ context }: Props) {
               </div>
               <div className="status-circle-container">
                  <div className="bp-circle">
-                    <span>{activeStudent.points}</span>
+                    <span>{Number(activeStudent.points.toFixed(2))}</span>
                  </div>
                  <div className="mt-4">
                     <span className={`bp-badge px-4 py-2 text-md ${activeStudent.points >= 0 ? 'positive' : 'negative'}`}>
@@ -242,10 +248,60 @@ export default function BrowniePointsDashboard({ context }: Props) {
             </div>
         </div>
 
-        <div className="detail-card history-card mt-6">
-           <div className="card-header border-bottom">
+        <div className="detail-card history-card" style={{ marginTop: 32 }}>
+           <div className="card-header border-bottom" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
               <h3 className="card-title">History Log</h3>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                {(() => {
+                  const evts = [...activeStudent.history].reverse();
+                  const filtered = evts.filter(ev => {
+                    const evType = ev.delta >= 0 ? (ev.reason.toLowerCase().includes('correction') || ev.reason.toLowerCase().includes('manual') ? 'Manual' : 'Bonus') : 'Penalty';
+                    if (histFilterType !== 'ALL' && evType !== histFilterType) return false;
+                    if (histFilterFrom && new Date(ev.awardedAt) < new Date(histFilterFrom)) return false;
+                    if (histFilterTo && new Date(ev.awardedAt) > new Date(histFilterTo + 'T23:59:59')) return false;
+                    if (histSearch && !ev.reason.toLowerCase().includes(histSearch.toLowerCase())) return false;
+                    return true;
+                  });
+                  return `${filtered.length} of ${evts.length} entries`;
+                })()}
+              </span>
            </div>
+
+           {/* ── Filter Bar ── */}
+           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+             <select
+               value={histFilterType}
+               onChange={e => setHistFilterType(e.target.value as any)}
+               style={{ fontSize: '0.8rem', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer' }}
+             >
+               <option value="ALL">All Types</option>
+               <option value="Bonus">Bonus</option>
+               <option value="Penalty">Penalty</option>
+               <option value="Manual">Manual</option>
+             </select>
+             <input
+               type="date" value={histFilterFrom} onChange={e => setHistFilterFrom(e.target.value)}
+               style={{ fontSize: '0.8rem', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff' }}
+               placeholder="From"
+             />
+             <input
+               type="date" value={histFilterTo} onChange={e => setHistFilterTo(e.target.value)}
+               style={{ fontSize: '0.8rem', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff' }}
+               placeholder="To"
+             />
+             <input
+               type="text" value={histSearch} onChange={e => setHistSearch(e.target.value)}
+               placeholder="Search reason…"
+               style={{ fontSize: '0.8rem', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', minWidth: 160, flex: 1 }}
+             />
+             {(histFilterType !== 'ALL' || histFilterFrom || histFilterTo || histSearch) && (
+               <button
+                 onClick={() => { setHistFilterType('ALL'); setHistFilterFrom(''); setHistFilterTo(''); setHistSearch(''); }}
+                 style={{ fontSize: '0.78rem', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}
+               >✕ Clear</button>
+             )}
+           </div>
+
            <div className="table-container shadow-none border-0" style={{ borderRadius: '0 0 var(--radius) var(--radius)' }}>
              <table className="bp-table">
                <thead>
@@ -258,25 +314,40 @@ export default function BrowniePointsDashboard({ context }: Props) {
                  </tr>
                </thead>
                <tbody>
-                  {activeStudent.history.length === 0 ? (
-                    <tr><td colSpan={5} style={{textAlign:'center', padding: '30px 0'}}>No history events found.</td></tr>
-                  ) : (
-                    [...activeStudent.history].reverse().map((ev, i) => (
-                       <tr key={i}>
-                         <td>{new Date(ev.awardedAt).toLocaleDateString()} {new Date(ev.awardedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</td>
-                         <td>
-                           <span className="bp-badge minimal" style={{background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border)'}}>
-                              {ev.delta >= 0 ? (ev.reason.toLowerCase().includes('correction') || ev.reason.toLowerCase().includes('manual') ? 'Manual' : 'Bonus') : 'Penalty'}
-                           </span>
-                         </td>
-                         <td style={{fontWeight:600}} className={ev.delta >= 0 ? 'text-green' : 'text-red'}>
-                            {ev.delta > 0 ? '+' : ''}{ev.delta}
-                         </td>
-                         <td>{ev.reason || '—'}</td>
-                         <td style={{color: 'var(--text-muted)'}}>{ev.awardedBy}</td>
-                       </tr>
-                    ))
-                  )}
+                  {(() => {
+                    const evts = [...activeStudent.history].reverse();
+                    const filtered = evts.filter(ev => {
+                      const evType = ev.delta >= 0 ? (ev.reason.toLowerCase().includes('correction') || ev.reason.toLowerCase().includes('manual') ? 'Manual' : 'Bonus') : 'Penalty';
+                      if (histFilterType !== 'ALL' && evType !== histFilterType) return false;
+                      if (histFilterFrom && new Date(ev.awardedAt) < new Date(histFilterFrom)) return false;
+                      if (histFilterTo && new Date(ev.awardedAt) > new Date(histFilterTo + 'T23:59:59')) return false;
+                      if (histSearch && !ev.reason.toLowerCase().includes(histSearch.toLowerCase())) return false;
+                      return true;
+                    });
+                    if (filtered.length === 0) return (
+                      <tr><td colSpan={5} style={{textAlign:'center', padding: '30px 0', color: 'var(--text-muted)'}}>No matching history events.</td></tr>
+                    );
+                    return filtered.map((ev, i) => {
+                      const evType = ev.delta >= 0 ? (ev.reason.toLowerCase().includes('correction') || ev.reason.toLowerCase().includes('manual') ? 'Manual' : 'Bonus') : 'Penalty';
+                      return (
+                        <tr key={i}>
+                          <td>{new Date(ev.awardedAt).toLocaleDateString()} {new Date(ev.awardedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</td>
+                          <td>
+                            <span className="bp-badge minimal" style={{
+                              background: evType === 'Bonus' ? '#10b98115' : evType === 'Penalty' ? '#ef444415' : '#6366f115',
+                              color: evType === 'Bonus' ? '#10b981' : evType === 'Penalty' ? '#ef4444' : '#6366f1',
+                              border: '1px solid transparent',
+                            }}>{evType}</span>
+                          </td>
+                          <td style={{fontWeight:600}} className={ev.delta >= 0 ? 'text-green' : 'text-red'}>
+                            {ev.delta > 0 ? '+' : ''}{Number(ev.delta.toFixed(2))}
+                          </td>
+                          <td>{ev.reason || '—'}</td>
+                          <td style={{color: 'var(--text-muted)'}}>{ev.awardedBy}</td>
+                        </tr>
+                      );
+                    });
+                  })()}
                </tbody>
              </table>
            </div>
@@ -348,7 +419,7 @@ export default function BrowniePointsDashboard({ context }: Props) {
             </div>
             <div className="stat-info">
               <span className="stat-label">Class Average</span>
-              <span className="stat-value text-green">{avgPoints} BP</span>
+              <span className="stat-value text-green">{Number(avgPoints.toFixed(2))} BP</span>
             </div>
           </div>
           
@@ -358,7 +429,7 @@ export default function BrowniePointsDashboard({ context }: Props) {
             </div>
             <div className="stat-info">
               <span className="stat-label">Top Earner</span>
-              <span className="stat-value text-orange">{topStudent ? `${topStudent.points} BP` : '—'}</span>
+              <span className="stat-value text-orange">{topStudent ? `${Number(topStudent.points.toFixed(2))} BP` : '—'}</span>
             </div>
           </div>
         </div>
@@ -423,7 +494,7 @@ export default function BrowniePointsDashboard({ context }: Props) {
                         </div>
                       </div>
                     </td>
-                    <td style={{ fontWeight: 700, fontSize: '1rem', color: rec.points >= 0 ? 'hsl(142,55%,32%)' : 'var(--error)' }}>{rec.points} <span style={{ fontSize: '0.7rem', fontWeight: 500, color: 'var(--text-muted)' }}>BP</span></td>
+                    <td style={{ fontWeight: 700, fontSize: '1rem', color: rec.points >= 0 ? 'hsl(142,55%,32%)' : 'var(--error)' }}>{Number(rec.points.toFixed(2))} <span style={{ fontSize: '0.7rem', fontWeight: 500, color: 'var(--text-muted)' }}>BP</span></td>
                     <td>
                       <span className={`bp-badge px-3 ${rec.points >= 0 ? 'positive' : 'negative'}`}>
                         {rec.points >= 0 ? 'Healthy' : 'At Risk'}

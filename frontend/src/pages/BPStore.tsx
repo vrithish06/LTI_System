@@ -5,9 +5,10 @@ import type { ActivityRecord } from './ActivitiesTypes';
 
 interface Props {
   context: LtiContext;
+  onOpenActivity?: (activity: ActivityRecord) => void;
 }
 
-export default function BPStore({ context }: Props) {
+export default function BPStore({ context, onOpenActivity }: Props) {
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [userBp, setUserBp] = useState<number>(0);
   const [loading, setLoading] = useState(true);
@@ -100,11 +101,7 @@ export default function BPStore({ context }: Props) {
                 key={activity.activity_id} 
                 activity={activity} 
                 userBp={userBp}
-                context={context}
-                onDone={(newBal) => {
-                  updateBalance(newBal);
-                  removeActivity(activity.activity_id);
-                }}
+                onOpen={() => onOpenActivity?.(activity)}
               />
             ))}
           </ul>
@@ -114,18 +111,10 @@ export default function BPStore({ context }: Props) {
   );
 }
 
-function LateSubmissionCard({ activity, userBp, context, onDone }: { activity: ActivityRecord, userBp: number, context: LtiContext, onDone: (newBal: number) => void }) {
+function LateSubmissionCard({ activity, userBp, onOpen }: { activity: ActivityRecord, userBp: number, onOpen: () => void }) {
   const [cost, setCost] = useState(0);
   const [timeLeftStr, setTimeLeftStr] = useState('');
   const [expired, setExpired] = useState(false);
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  
-  // Submission state
-  const [submitState, setSubmitState] = useState<'idle'|'submitting'|'error'>('idle');
-  const [proofFile, setProofFile] = useState<File | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     const updateTimer = () => {
@@ -152,54 +141,13 @@ function LateSubmissionCard({ activity, userBp, context, onDone }: { activity: A
       const diff = hardDl - now;
       const h = Math.floor(diff / 3600000);
       const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setTimeLeftStr(`${h}h ${m}m ${s}s`);
+      setTimeLeftStr(`${h}h ${m}m`);
     };
 
     updateTimer();
     const intv = setInterval(updateTimer, 1000);
     return () => clearInterval(intv);
   }, [activity]);
-
-  const handleSubmit = async () => {
-    setSubmitState('submitting');
-    setErrorMsg('');
-    try {
-      let reqData: any;
-      let headers: any = {};
-
-      if (activity.is_proof_required) {
-        if (!proofFile) {
-          setErrorMsg('Proof file is required.');
-          setSubmitState('error');
-          return;
-        }
-        const formData = new FormData();
-        formData.append('user_id', context.userId);
-        formData.append('course_id', context.courseId);
-        formData.append('proof', proofFile);
-        reqData = formData;
-        headers['Content-Type'] = 'multipart/form-data';
-      } else {
-        reqData = { user_id: context.userId, course_id: context.courseId };
-      }
-
-      await axios.post(`/api/lti/activities/${activity.activity_id}/submit`, reqData, { headers });
-
-      // Refresh HP balance
-      try {
-        const hpRes = await axios.get(`/api/bp/student/${context.courseId}/${context.userId}`);
-        const bal = hpRes.data.record?.points ?? 0;
-        onDone(bal);
-      } catch (_) { 
-        onDone(userBp - cost + (activity.rules?.reward_hp || 0));
-      }
-
-    } catch (err: any) {
-      setSubmitState('error');
-      setErrorMsg(err?.response?.data?.error || 'Submission failed.');
-    }
-  };
 
   if (expired) {
     return (
@@ -218,138 +166,58 @@ function LateSubmissionCard({ activity, userBp, context, onDone }: { activity: A
   const netGain = Math.round((baseReward - cost) * 100) / 100;
 
   return (
-    <>
-      <li className="al-done-card" style={{ cursor: 'default', overflow: 'hidden' }}>
-        {/* Card Header (mimics pending card) */}
-        <div className="al-done-row" style={{ cursor: 'default' }}>
-          <div className="al-status-stripe al-stripe-amber" />
-          <div className="activity-item-icon" style={{ background: '#fef3c7', color: '#d97706' }}>
-             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-               <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-             </svg>
+    <li 
+      className="activity-list-item al-card-pending cursor-pointer" 
+      onClick={onOpen}
+      role="listitem"
+      tabIndex={0}
+      onKeyDown={e => e.key === 'Enter' && onOpen()}
+    >
+      <div className="al-status-stripe al-stripe-amber" />
+      <div className="activity-item-icon al-pending-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+          <polyline points="10 9 9 9 8 9" />
+        </svg>
+      </div>
+      <div className="activity-item-content" style={{ flex: 1 }}>
+        <span className="activity-item-title">{activity.title}</span>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+          Base Reward: +{baseReward} BP
+        </span>
+      </div>
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, marginBottom: '2px' }}>Hard Deadline</span>
+        <span style={{ color: '#ef4444', fontWeight: 600, fontSize: '0.9rem' }}>
+          {timeLeftStr}
+        </span>
+      </div>
+      
+      <div style={{ paddingRight: '16px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: canAfford ? 'var(--text-primary)' : '#ef4444' }}>
+            Cost: {cost} BP
           </div>
-          <div className="activity-item-content">
-            <span className="activity-item-title">{activity.title}</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-              <span className="activity-item-deadline" style={{ color: '#ef4444', fontWeight: 600 }}>
-                Hard deadline in: {timeLeftStr}
-              </span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                · Base: +{baseReward} BP
-              </span>
-            </div>
-          </div>
-          
-          <div style={{ paddingRight: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: canAfford ? 'var(--text-primary)' : '#ef4444' }}>
-                Cost: {cost} BP
-              </div>
-              <div style={{ fontSize: '0.75rem', color: netGain > 0 ? '#10b981' : '#f59e0b', fontWeight: 600 }}>
-                Net: {netGain > 0 ? '+' : ''}{netGain} BP
-              </div>
-            </div>
-            
-            {!isUnlocked && (
-              <button 
-                onClick={() => setShowConfirm(true)}
-                disabled={!canAfford}
-                style={{
-                  background: canAfford ? '#f59e0b' : '#cbd5e1',
-                  color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px',
-                  fontWeight: 600, fontSize: '0.85rem', cursor: canAfford ? 'pointer' : 'not-allowed',
-                }}
-              >
-                Unlock
-              </button>
-            )}
+          <div style={{ fontSize: '0.75rem', color: netGain > 0 ? '#10b981' : '#f59e0b', fontWeight: 600 }}>
+            Net: {netGain > 0 ? '+' : ''}{netGain} BP
           </div>
         </div>
-
-        {/* Expanded Submission Area */}
-        {isUnlocked && (
-          <div className="al-submission-detail" style={{ background: '#fafafa', borderTop: '1px solid #f1f5f9' }}>
-            <h4 style={{ margin: '0 0 12px', color: 'var(--text-primary)', fontSize: '0.95rem' }}>Submit Activity</h4>
-            
-            {activity.is_proof_required && (
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-secondary)' }}>
-                  Upload Proof (PDF, JPG, PNG) <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => setProofFile(e.target.files?.[0] || null)}
-                  style={{ display: 'block', width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.85rem', background: '#fff' }}
-                />
-              </div>
-            )}
-
-            {!activity.is_proof_required && (
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                  <input
-                    type="checkbox"
-                    checked={confirmed}
-                    onChange={(e) => setConfirmed(e.target.checked)}
-                    style={{ marginRight: '8px' }}
-                  />
-                  I confirm I have completed this activity.
-                </label>
-              </div>
-            )}
-
-            {errorMsg && <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '12px' }}>{errorMsg}</div>}
-
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button 
-                onClick={handleSubmit}
-                disabled={submitState === 'submitting' || (activity.is_proof_required ? !proofFile : !confirmed)}
-                style={{
-                  background: '#10b981', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px',
-                  fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', flex: 1,
-                  opacity: (submitState === 'submitting' || (activity.is_proof_required ? !proofFile : !confirmed)) ? 0.6 : 1
-                }}
-              >
-                {submitState === 'submitting' ? 'Submitting...' : `Submit & Pay ${cost} BP`}
-              </button>
-            </div>
-          </div>
-        )}
-      </li>
-
-      {/* Confirmation Modal */}
-      {showConfirm && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-        }}>
-          <div style={{ background: '#fff', padding: 32, borderRadius: 16, maxWidth: 400, width: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
-            <h2 style={{ margin: '0 0 12px', fontSize: '1.25rem', color: 'var(--text-primary)' }}>Unlock Submission</h2>
-            <p style={{ color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 24, fontSize: '0.9rem' }}>
-              You are about to unlock the submission panel for <strong>{activity.title}</strong>.<br/><br/>
-              This will <strong style={{ color: '#ef4444' }}>cost {cost} BP</strong> immediately upon submission.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button 
-                onClick={() => setShowConfirm(false)}
-                style={{ padding: '8px 16px', background: '#f1f5f9', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, color: 'var(--text-main)', fontSize: '0.9rem' }}
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={() => {
-                  setShowConfirm(false);
-                  setIsUnlocked(true);
-                }}
-                style={{ padding: '8px 16px', background: '#f59e0b', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, color: '#fff', fontSize: '0.9rem' }}
-              >
-                Proceed
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+        
+        <button 
+          disabled={!canAfford}
+          style={{
+            background: canAfford ? '#f59e0b' : '#cbd5e1',
+            color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px',
+            fontWeight: 600, fontSize: '0.85rem', cursor: canAfford ? 'pointer' : 'not-allowed',
+          }}
+        >
+          Unlock
+        </button>
+      </div>
+    </li>
   );
 }

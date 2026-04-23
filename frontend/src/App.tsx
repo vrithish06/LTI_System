@@ -115,8 +115,8 @@ export default function App() {
     );
   }
 
-  // ── Unified LTI Dashboard (new single-entry-point mode) ─────────────────────
-  if (mode === 'dashboard') {
+  // ── Unified LTI Dashboard (new single-entry-point mode OR /lti/* paths) ─────
+  if (mode === 'dashboard' || window.location.pathname.startsWith('/lti')) {
     return <Dashboard context={context} />;
   }
 

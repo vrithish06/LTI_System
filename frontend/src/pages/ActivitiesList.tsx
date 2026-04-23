@@ -225,15 +225,135 @@ function CompletedCard({
   );
 }
 
+/* ── missed card with detail ─────────────────────────────────────── */
+function MissedCard({
+  activity,
+  onOpen,
+}: {
+  activity: ActivityRecord;
+  onOpen: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <li className="al-done-card" role="listitem">
+      <div
+        className="al-done-row"
+        onClick={() => setExpanded(e => !e)}
+        tabIndex={0}
+        onKeyDown={e => e.key === 'Enter' && setExpanded(v => !v)}
+        role="button"
+        aria-expanded={expanded}
+        aria-label={`${activity.title} — expand details`}
+      >
+        <div className="al-status-stripe" style={{ background: '#ef4444' }} />
+        <div className="activity-item-icon" style={{ background: '#fee2e2', color: '#ef4444' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+          </svg>
+        </div>
+        <div className="activity-item-content">
+          <span className="activity-item-title">{activity.title}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+            <span className="al-submitted-label" style={{ color: '#ef4444' }}>
+              Hard deadline passed
+            </span>
+          </div>
+        </div>
+        <div className="activity-item-badges">
+          <span className="activity-type-badge">{TYPE_LABEL[activity.type] ?? activity.type}</span>
+          <span className={`activity-req-badge ${activity.is_mandatory ? 'req' : 'opt'}`}>
+            {activity.is_mandatory ? 'Req' : 'Opt'}
+          </span>
+        </div>
+        {/* expand chevron */}
+        <div className="al-expand-btn" title="View details">
+          <svg
+            width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
+          >
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+      </div>
+
+      {/* expanded detail */}
+      {expanded && (
+        <div className="al-submission-detail">
+          <div className="al-detail-grid">
+            <div className="al-detail-tile">
+              <span className="al-detail-label">Status</span>
+              <span className="al-detail-value al-val-late">
+                ⚠ Missed
+              </span>
+            </div>
+
+            {activity.deadline && (
+              <div className="al-detail-tile">
+                <span className="al-detail-label">Deadline Was</span>
+                <span className="al-detail-value">{fmt(activity.deadline)}</span>
+              </div>
+            )}
+            
+            {activity.is_mandatory && activity.rules?.late_penalty_hp && (
+              <div className="al-detail-tile">
+                <span className="al-detail-label">Penalty</span>
+                <span className="al-detail-value al-val-late">-{activity.rules.late_penalty_hp} BP</span>
+              </div>
+            )}
+          </div>
+
+          <button className="al-view-detail-btn" onClick={e => { e.stopPropagation(); onOpen(); }}>
+            Open Activity Page
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </button>
+        </div>
+      )}
+    </li>
+  );
+}
+
 /* ── main component ──────────────────────────────────────────────── */
-type Tab = 'pending' | 'completed';
+type Tab = 'assigned' | 'completed' | 'missed';
+
+function getTabFromUrl(): Tab {
+  const params = new URLSearchParams(window.location.search);
+  const val = params.get('tab');
+  if (val === 'completed' || val === 'missed' || val === 'assigned') return val;
+  return 'assigned';
+}
+
+function setTabInUrl(tab: Tab) {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('lti_token');
+  const newParams = new URLSearchParams();
+  if (token) newParams.set('lti_token', token);
+  newParams.set('tab', tab);
+  // pushState — so the browser back button navigates between tabs
+  window.history.pushState({ tab }, '', window.location.pathname + '?' + newParams.toString());
+}
 
 export default function ActivitiesList({ context, onOpenActivity }: Props) {
   const [activities,   setActivities]   = useState<ActivityRecord[]>([]);
   const [submissions,  setSubmissions]  = useState<SubmissionRecord[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState('');
-  const [activeTab,    setActiveTab]    = useState<Tab>('pending');
+  const [activeTab,    setActiveTab]    = useState<Tab>(getTabFromUrl);
+
+  const switchTab = (tab: Tab) => {
+    setActiveTab(tab);
+    setTabInUrl(tab);
+  };
+
+  // Sync tab state when browser back/forward is pressed
+  useEffect(() => {
+    const onPop = () => setActiveTab(getTabFromUrl());
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -268,16 +388,22 @@ export default function ActivitiesList({ context, onOpenActivity }: Props) {
     [submissions],
   );
 
-  const { pending, completed } = useMemo(() => {
+  const { assigned, completed, missed } = useMemo(() => {
     const now = new Date().getTime();
     return {
-      pending: activities.filter(a => {
+      assigned: activities.filter(a => {
         if (a.is_submitted) return false;
         if (!a.deadline) return true;
         const dl = new Date(a.deadline).getTime();
         return now <= dl; // Only show if NOT late
       }),
       completed: activities.filter(a => a.is_submitted),
+      missed: activities.filter(a => {
+        if (a.is_submitted) return false;
+        if (!a.deadline) return false;
+        const hardDl = new Date(a.deadline).getTime() + (a.grace_period || 0) * 60000;
+        return now > hardDl;
+      }),
     };
   }, [activities]);
 
@@ -335,21 +461,21 @@ export default function ActivitiesList({ context, onOpenActivity }: Props) {
           {/* ── Tab bar ── */}
           <div className="al-tab-bar">
             <button
-              className={`al-tab ${activeTab === 'pending' ? 'al-tab-active' : ''}`}
-              onClick={() => setActiveTab('pending')}
+              className={`al-tab ${activeTab === 'assigned' ? 'al-tab-active' : ''}`}
+              onClick={() => switchTab('assigned')}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
               </svg>
-              Pending
-              <span className={`al-tab-count ${activeTab === 'pending' ? 'al-tab-count-active' : ''}`}>
-                {pending.length}
+              Assigned
+              <span className={`al-tab-count ${activeTab === 'assigned' ? 'al-tab-count-active' : ''}`}>
+                {assigned.length}
               </span>
             </button>
 
             <button
               className={`al-tab ${activeTab === 'completed' ? 'al-tab-active al-tab-done-active' : ''}`}
-              onClick={() => setActiveTab('completed')}
+              onClick={() => switchTab('completed')}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
@@ -359,19 +485,33 @@ export default function ActivitiesList({ context, onOpenActivity }: Props) {
                 {doneCount}
               </span>
             </button>
+
+            <button
+              className={`al-tab ${activeTab === 'missed' ? 'al-tab-active' : ''}`}
+              style={activeTab === 'missed' ? { color: '#ef4444', borderColor: '#ef4444' } : {}}
+              onClick={() => switchTab('missed')}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+              </svg>
+              Missed
+              <span className={`al-tab-count ${activeTab === 'missed' ? 'al-tab-count-active' : ''}`} style={activeTab === 'missed' ? { background: '#fee2e2', color: '#b91c1c' } : {}}>
+                {missed.length}
+              </span>
+            </button>
           </div>
 
-          {/* ── Pending tab ── */}
-          {activeTab === 'pending' && (
+          {/* ── Assigned tab ── */}
+          {activeTab === 'assigned' && (
             <div className="al-tab-panel">
-              {pending.length === 0 ? (
+              {assigned.length === 0 ? (
                 <div className="al-tab-empty">
                   <span className="al-tab-empty-icon">🎉</span>
                   <p>All caught up! Every activity is submitted.</p>
                 </div>
               ) : (
                 <ul className="activity-items-list">
-                  {pending.map(a => (
+                  {assigned.map(a => (
                     <PendingCard key={a.activity_id} activity={a} onOpen={() => onOpenActivity(a)} />
                   ))}
                 </ul>
@@ -394,6 +534,28 @@ export default function ActivitiesList({ context, onOpenActivity }: Props) {
                       key={a.activity_id}
                       activity={a}
                       submission={subMap[a.activity_id]}
+                      onOpen={() => onOpenActivity(a)}
+                    />
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {/* ── Missed tab ── */}
+          {activeTab === 'missed' && (
+            <div className="al-tab-panel">
+              {missed.length === 0 ? (
+                <div className="al-tab-empty">
+                  <span className="al-tab-empty-icon">✨</span>
+                  <p>Great job! You haven't missed any hard deadlines.</p>
+                </div>
+              ) : (
+                <ul className="activity-items-list al-completed-list">
+                  {missed.map(a => (
+                    <MissedCard
+                      key={a.activity_id}
+                      activity={a}
                       onOpen={() => onOpenActivity(a)}
                     />
                   ))}

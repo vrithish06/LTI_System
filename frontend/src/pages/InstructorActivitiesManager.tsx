@@ -204,6 +204,15 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
 
   const handleSave = async (activityId: string) => {
     if (!editForm) return;
+
+    const penaltyVal = Number(editForm.penaltyValue);
+    const gracePeriodVal = Number(editForm.gracePeriodDuration);
+
+    // Rule: if penalty is 0, grace period must also be 0
+    if (penaltyVal === 0 && gracePeriodVal > 0) {
+      alert('A grace period cannot be set when the late penalty is 0.\nEither set a penalty > 0 or set the grace period to 0.');
+      return;
+    }
     setSaving(true);
     try {
       await axios.put(`/api/lti/activities/${activityId}`, {
@@ -586,8 +595,27 @@ export default function InstructorActivitiesManager({ context, onAddActivity }: 
                       </div>
                       {editForm.activityType !== 'VIBE_MILESTONE' && (
                         <div>
-                          <label>Grace Period (Hours)</label>
-                          <input className="ia-input" type="number" name="gracePeriodDuration" value={editForm.gracePeriodDuration} onChange={handleEditChange} />
+                          <label>
+                            Grace Period (Hours)
+                            {Number(editForm.penaltyValue) === 0 && (
+                              <span style={{ marginLeft: '0.5rem', fontSize: '0.72rem', fontWeight: 600, color: '#ef4444' }}>
+                                ⚠ Must be 0 when penalty is 0
+                              </span>
+                            )}
+                          </label>
+                          <input
+                            className="ia-input" type="number" name="gracePeriodDuration"
+                            value={Number(editForm.penaltyValue) === 0 ? '0' : editForm.gracePeriodDuration}
+                            onChange={handleEditChange}
+                            min={0}
+                            disabled={Number(editForm.penaltyValue) === 0}
+                            style={Number(editForm.penaltyValue) === 0 ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+                          />
+                          {Number(editForm.penaltyValue) === 0 && (
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: 3 }}>
+                              Set a late penalty to enable the grace period.
+                            </span>
+                          )}
                         </div>
                       )}
                       {editForm.activityType !== 'VIBE_MILESTONE' && (

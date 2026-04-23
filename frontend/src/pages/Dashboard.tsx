@@ -17,36 +17,126 @@ interface Props {
 }
 
 type Section = 'bp' | 'add_activity' | 'activities' | 'incentives' | 'bp_store';
+const VALID_SECTIONS: Section[] = ['bp', 'add_activity', 'activities', 'incentives', 'bp_store'];
+
+// ── Path-based routing helpers ──────────────────────────────────────
+// URL shape:  /lti/<section>           e.g. /lti/activities
+//             /lti/<section>/<actId>   e.g. /lti/activities/act_abc123
+// The ?lti_token=... query param is always preserved.
+
+function parsePath(): { section: Section | null; activityId: string | null } {
+  const parts = window.location.pathname.replace(/^\//, '').split('/');
+  // parts[0] = 'lti', parts[1] = section, parts[2] = activityId
+  const section = parts[1] as Section;
+  const activityId = parts[2] || null;
+  return {
+    section: VALID_SECTIONS.includes(section) ? section : null,
+    activityId,
+  };
+}
+
+function buildUrl(section: Section, activityId?: string) {
+  const base = activityId ? `/lti/${section}/${activityId}` : `/lti/${section}`;
+  // Only preserve the lti_token param — drop mode= and other launch params
+  const token = new URLSearchParams(window.location.search).get('lti_token');
+  return token ? `${base}?lti_token=${token}` : base;
+}
+
+function navigateTo(section: Section, activityId?: string) {
+  window.history.pushState({ section, activityId: activityId ?? null }, '', buildUrl(section, activityId));
+}
+
+function replaceTo(section: Section, activityId?: string) {
+  window.history.replaceState({ section, activityId: activityId ?? null }, '', buildUrl(section, activityId));
+}
 
 export default function Dashboard({ context }: Props) {
   const isInstructor = context.role === 'Instructor';
-
   const defaultSection: Section = isInstructor ? 'bp' : 'activities';
-  const [activeSection, setActiveSection] = useState<Section>(defaultSection);
+
+  const getInitialState = () => {
+    const { section, activityId } = parsePath();
+    return { section: section || defaultSection, activityId };
+  };
+
+  const [activeSection, setActiveSection] = useState<Section>(() => getInitialState().section);
+  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(() => getInitialState().activityId);
   const [selectedActivity, setSelectedActivity] = useState<ActivityRecord | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [courseName, setCourseName] = useState(context.courseName || '');
+  const [allActivities, setAllActivities] = useState<ActivityRecord[]>([]);
+
+  // On first load: write correct path without adding an extra history entry
+  useEffect(() => {
+    const { section } = parsePath();
+    if (!section) {
+      replaceTo(activeSection);
+    }
+  }, []);
+
+  // Load activity by id when restoring from URL
+  useEffect(() => {
+    if (!selectedActivityId) return;
+    const found = allActivities.find(a => a.activity_id === selectedActivityId);
+    if (found) { setSelectedActivity(found); return; }
+    import('axios').then(({ default: axios }) => {
+      axios.get(`/api/lti/course/${context.courseId}/activities?userId=${context.userId}`)
+        .then(res => {
+          const acts: ActivityRecord[] = res.data.data || res.data.activities || [];
+          setAllActivities(acts);
+          const act = acts.find(a => a.activity_id === selectedActivityId);
+          if (act) setSelectedActivity(act);
+        })
+        .catch(console.error);
+    });
+  }, [selectedActivityId]);
 
   useEffect(() => {
     if (!courseName && context.courseId) {
-      axios.get(`/api/lti/courseName/${context.courseId}`).then(res => {
-        if (res.data.success && res.data.courseName) setCourseName(res.data.courseName);
-      }).catch(console.error);
+      import('axios').then(({ default: axios }) => {
+        axios.get(`/api/lti/courseName/${context.courseId}`).then(res => {
+          if (res.data.success && res.data.courseName) setCourseName(res.data.courseName);
+        }).catch(console.error);
+      });
     }
   }, [courseName, context.courseId]);
 
+  // Listen to browser back/forward button
+  useEffect(() => {
+    const onPop = () => {
+      const { section, activityId } = parsePath();
+      const resolved = section || defaultSection;
+      setActiveSection(resolved);
+      if (activityId) {
+        setSelectedActivityId(activityId);
+      } else {
+        setSelectedActivity(null);
+        setSelectedActivityId(null);
+      }
+      setSidebarOpen(false);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [defaultSection]);
+
   const handleOpenActivity = (activity: ActivityRecord) => {
     setSelectedActivity(activity);
+    setSelectedActivityId(activity.activity_id);
+    navigateTo(activeSection, activity.activity_id);
   };
 
   const handleCloseActivity = () => {
     setSelectedActivity(null);
+    setSelectedActivityId(null);
+    window.history.back();
   };
 
   const handleNavClick = (section: Section) => {
     setActiveSection(section);
     setSelectedActivity(null);
+    setSelectedActivityId(null);
     setSidebarOpen(false);
+    navigateTo(section);
   };
 
   const navItems: { id: Section; label: string; icon: JSX.Element; teacherOnly?: boolean; studentOnly?: boolean }[] = [
@@ -115,8 +205,8 @@ export default function Dashboard({ context }: Props) {
   });
 
   const renderContent = () => {
-    // If an activity is selected from the list, show ActivityDetail
-    if (selectedActivity && activeSection === 'activities') {
+    // If an activity is selected from the list or store, show ActivityDetail
+    if (selectedActivity && (activeSection === 'activities' || activeSection === 'bp_store')) {
       const detailContext: LtiContext = {
         ...context,
         activityId: selectedActivity.activity_id,
@@ -128,9 +218,9 @@ export default function Dashboard({ context }: Props) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 18 9 12 15 6" />
             </svg>
-            Back to Activities
+            Back to {activeSection === 'bp_store' ? 'Store' : 'Activities'}
           </button>
-          <ActivityDetail context={detailContext} />
+          <ActivityDetail context={detailContext} isStoreMode={activeSection === 'bp_store'} />
         </div>
       );
     }
@@ -179,7 +269,7 @@ export default function Dashboard({ context }: Props) {
       case 'bp_store':
         return (
           <div className="dashboard-content-area">
-            <BPStore context={context} />
+            <BPStore context={context} onOpenActivity={handleOpenActivity} />
           </div>
         );
 

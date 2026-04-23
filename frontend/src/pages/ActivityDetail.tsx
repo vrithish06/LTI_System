@@ -42,6 +42,7 @@ interface Props {
   context: LtiContext;
   onSuccess?: (hp: number) => void;
   onError?: (msg: string) => void;
+  isStoreMode?: boolean;
 }
 
 type SubmitState = 'idle' | 'submitting' | 'done' | 'error';
@@ -49,7 +50,7 @@ type SubmitState = 'idle' | 'submitting' | 'done' | 'error';
 /** Returns current UTC timestamp as a Date. Deadline stored in DB is UTC. */
 const nowUTC = () => new Date();
 
-export default function ActivityDetail({ context, onSuccess, onError }: Props) {
+export default function ActivityDetail({ context, onSuccess, onError, isStoreMode }: Props) {
   const [activity, setActivity] = useState<ActivityRecord | null>(null);
   const [submission, setSubmission] = useState<SubmissionRecord | null>(null);
   const [hpBalance, setHpBalance] = useState<HpBalance | null>(null);
@@ -254,8 +255,8 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div>
-                <h2>Confirm Submission</h2>
-                <p className="modal-subtitle">This action cannot be undone.</p>
+                <h2>{isStoreMode ? 'Unlock Submission' : 'Confirm Submission'}</h2>
+                <p className="modal-subtitle">{isStoreMode ? 'This will deduct BP from your account.' : 'This action cannot be undone.'}</p>
               </div>
               <button className="btn-close" onClick={() => setConfirmOpen(false)}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -280,13 +281,25 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
 
               {/* Grace period warning in modal */}
               {isInGracePeriod && (
-                <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.35)', borderRadius: '8px', color: '#92400e' }}>
-                  <strong>⏳ Late Submission — Grace Period Active</strong>
-                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.875rem', lineHeight: 1.5 }}>
-                    You are submitting after the deadline. An estimated penalty of{' '}
-                    <strong>{estimatedPenalty} BP</strong> will be applied.
-                    <br />Estimated reward: <strong className="text-green">+{estimatedReward} BP</strong>
-                  </p>
+                <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: isStoreMode ? 'rgba(245,158,11,0.1)' : 'rgba(234,179,8,0.12)', border: isStoreMode ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(234,179,8,0.35)', borderRadius: '8px', color: '#92400e' }}>
+                  {isStoreMode ? (
+                    <>
+                      <strong>Store Unlock Requirements</strong>
+                      <p style={{ margin: '0.35rem 0 0', fontSize: '0.875rem', lineHeight: 1.5 }}>
+                        Unlocking this late submission will immediately cost you <strong>{estimatedPenalty} BP</strong>.
+                        <br />Upon completion, you will earn the base reward of <strong className="text-green">+{activity.rules?.reward_hp ?? 0} BP</strong> (Net Gain: {estimatedReward > 0 ? '+' : ''}{estimatedReward} BP).
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <strong>⏳ Late Submission — Grace Period Active</strong>
+                      <p style={{ margin: '0.35rem 0 0', fontSize: '0.875rem', lineHeight: 1.5 }}>
+                        You are submitting after the deadline. An estimated penalty of{' '}
+                        <strong>{estimatedPenalty} BP</strong> will be applied.
+                        <br />Estimated reward: <strong className="text-green">+{estimatedReward} BP</strong>
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -316,8 +329,9 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
                   className="btn-primary"
                   onClick={handleSubmit}
                   disabled={submitState === 'submitting' || (activity.is_proof_required ? !proofFile : !confirmed)}
+                  style={{ background: isStoreMode ? '#f59e0b' : 'var(--primary)' }}
                 >
-                  {submitState === 'submitting' ? 'Submitting...' : 'Submit Activity'}
+                  {submitState === 'submitting' ? 'Submitting...' : isStoreMode ? `Pay ${estimatedPenalty} BP & Unlock` : 'Submit Activity'}
                 </button>
               </div>
             </div>
@@ -382,23 +396,9 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
               <strong>Submission closed. Strict deadline has passed.</strong>
               {activity.is_mandatory && (
                 <span style={{ marginLeft: '0.5rem', opacity: 0.75 }}>
-                  — A penalty of {activity.rules?.late_penalty_hp ?? 0} BP has been recorded.
+                  — A penalty of {activity.rules?.late_penalty_hp ?? 0} BP has been deducted.
                 </span>
               )}
-            </div>
-          </div>
-        ) : isInGracePeriod ? (
-          <div className="notice-banner" style={{ background: 'rgba(234,179,8,0.12)', borderColor: 'rgba(234,179,8,0.35)', color: '#92400e' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-            </svg>
-            <div>
-              <strong>Grace Period Active</strong>
-              <span style={{ marginLeft: '0.5rem', opacity: 0.85 }}>
-                — Submit before{' '}
-                {strictDeadline?.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.
-                Estimated penalty: <strong>{estimatedPenalty} BP</strong>.
-              </span>
             </div>
           </div>
         ) : null}
@@ -574,11 +574,15 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
               About this activity
             </h3>
             <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: '2rem' }}>
-              Complete this activity and confirm your submission below. Your Brownie Points will be
-              updated automatically based on whether the submission is on time, within the grace period, or late.
-              {gracePeriodHours > 0 && (
-                <> Submissions after the deadline but within the <strong>{gracePeriodHours}-hour grace window</strong> will
-                receive a proportionally reduced reward.</>
+              {isStoreMode ? (
+                <>You are unlocking this activity in the <strong>BP Store</strong>. This will deduct <strong>{estimatedPenalty} BP</strong> from your current balance to grant you access to submit. After successful submission, you will earn the base reward of <strong>+{activity.rules?.reward_hp ?? 0} BP</strong>.</>
+              ) : (
+                <>Complete this activity and confirm your submission below to earn your Brownie Points.
+                  {gracePeriodHours > 0 ? (
+                    <> If you miss the normal deadline, the submission will close here, but you can still unlock it in the <strong>BP Store</strong> during the <strong>{gracePeriodHours}-hour grace window</strong> by spending a portion of your BP.</>
+                  ) : (
+                    <> No grace period is available. Late submissions will not be accepted once the deadline passes.</>
+                  )}</>
               )}
             </p>
 
@@ -600,7 +604,7 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
                 </div>
                 <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
                   The grace period of {gracePeriodHours} hour{gracePeriodHours !== 1 ? 's' : ''} has also elapsed.
-                  {activity.is_mandatory && ` A penalty of ${activity.rules?.late_penalty_hp ?? 0} BP has been automatically recorded.`}
+                  {activity.is_mandatory && ` A penalty of ${activity.rules?.late_penalty_hp ?? 0} BP has been automatically deducted.`}
                 </p>
               </div>
             ) : submitState === 'submitting' ? (
@@ -612,25 +616,43 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
               <div>
                 {isInGracePeriod && (
                   <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(234,179,8,0.10)', border: '1px solid rgba(234,179,8,0.30)', borderRadius: '8px', fontSize: '0.875rem', color: '#92400e' }}>
-                    <strong>⏳ Late submission:</strong> Estimated BP reward is{' '}
-                    <strong className="text-green">+{estimatedReward} BP</strong>{' '}
-                    (base {activity.rules?.reward_hp ?? 0} BP − ~{estimatedPenalty} BP penalty).
+                    {isStoreMode ? (
+                      <>
+                        <strong>BP Store Unlock:</strong> This will cost you <strong>{estimatedPenalty} BP</strong> to unlock. Net reward: <strong className="text-green">+{estimatedReward} BP</strong>.
+                      </>
+                    ) : (
+                      <>
+                        <strong>⏳ Late submission:</strong> Estimated BP reward is{' '}
+                        <strong className="text-green">+{estimatedReward} BP</strong>{' '}
+                        (base {activity.rules?.reward_hp ?? 0} BP − ~{estimatedPenalty} BP penalty).
+                      </>
+                    )}
                   </div>
                 )}
                 <button
                   id="submit-activity-btn"
                   className="btn-primary"
-                  style={{ padding: '0.75rem 2rem', fontSize: '1rem' }}
+                  style={{ padding: '0.75rem 2rem', fontSize: '1rem', background: isStoreMode ? '#f59e0b' : 'var(--primary)' }}
                   onClick={() => {
                     setProofFile(null);
                     setConfirmed(false);
                     setConfirmOpen(true);
                   }}
+                  disabled={(isStoreMode && (hpBalance?.current_hp ?? 0) < estimatedPenalty)}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '0.5rem' }}>
-                    <polyline points="20 6 9 17 4 12" />
+                    {isStoreMode ? (
+                      <>
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+                      </>
+                    ) : (
+                      <polyline points="20 6 9 17 4 12" />
+                    )}
                   </svg>
-                  {isInGracePeriod ? "Submit (Grace Period — Late)" : "I've Completed This Activity"}
+                  {isStoreMode
+                    ? ((hpBalance?.current_hp ?? 0) >= estimatedPenalty ? `Submit & Pay ${estimatedPenalty} BP` : `Insufficient BP (${hpBalance?.current_hp} / ${estimatedPenalty})`)
+                    : (isInGracePeriod ? "Submit (Grace Period — Late)" : "I've Completed This Activity")}
                 </button>
               </div>
             )}

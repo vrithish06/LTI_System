@@ -85,6 +85,15 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
       return;
     }
 
+    // If penalty is 0, grace period must also be 0
+    const gracePeriodVal = Number(formData.gracePeriodDuration);
+    if (penaltyVal === 0 && gracePeriodVal > 0) {
+      showValidationError(
+        'A grace period cannot be set when the late penalty is 0.\n\nIf there is no penalty for late submissions, the BP Store grace period window serves no purpose. Either set a penalty > 0, or keep the grace period at 0.'
+      );
+      return;
+    }
+
     setIsLoading(true);
     try {
       const formPayload = new FormData();
@@ -313,19 +322,6 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
           />
         </div>
 
-        {/* ── Grace Period ── */}
-        {!isMilestone && (
-          <>
-            <div className="acr-field">
-              <label className="acr-label">Grace Period (Hours)</label>
-              <input type="number" name="gracePeriodDuration" value={formData.gracePeriodDuration} onChange={handleChange} className="acr-input" min={0} />
-            </div>
-            <div className="acr-field" />
-          </>
-        )}
-
-        <div className="acr-divider acr-full" />
-
         {/* ── Checkboxes + Penalty ── */}
         {!isMilestone && (
           <>
@@ -357,14 +353,9 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
                 <div className="acr-field">
                   <label className="acr-label">
                     Penalty Value
-                    {Number(formData.penaltyValue) > 0 && Number(formData.rewardValue) > 0 && (
-                      <span style={{
-                        marginLeft: '0.5rem', fontSize: '0.72rem', fontWeight: 600,
-                        color: Number(formData.penaltyValue) >= Number(formData.rewardValue) ? '#ef4444' : '#10b981',
-                      }}>
-                        {Number(formData.penaltyValue) >= Number(formData.rewardValue)
-                          ? '⚠ Must be less than reward'
-                          : `✓ Net reward: +${Number(formData.rewardValue) - Number(formData.penaltyValue)} BP`}
+                    {Number(formData.penaltyValue) > 0 && Number(formData.penaltyValue) >= Number(formData.rewardValue) && (
+                      <span style={{ marginLeft: '0.5rem', fontSize: '0.72rem', fontWeight: 600, color: '#ef4444' }}>
+                        ⚠ Must be less than reward
                       </span>
                     )}
                   </label>
@@ -379,6 +370,36 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
                 </div>
               </>
             )}
+          </>
+        )}
+
+        {/* ── Grace Period ── */}
+        {!isMilestone && (
+          <>
+            <div className="acr-field">
+              <label className="acr-label" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                Grace Period (Hours)
+                {Number(formData.penaltyValue) === 0 && (
+                  <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#ef4444', whiteSpace: 'nowrap' }}>
+                    ⚠ Must be 0 when penalty is 0
+                  </span>
+                )}
+              </label>
+              <input
+                type="number" name="gracePeriodDuration"
+                value={Number(formData.penaltyValue) === 0 ? '0' : formData.gracePeriodDuration}
+                onChange={handleChange}
+                className="acr-input" min={0}
+                disabled={Number(formData.penaltyValue) === 0}
+                style={Number(formData.penaltyValue) === 0 ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+              />
+              {Number(formData.penaltyValue) === 0 && (
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, display: 'block' }}>
+                  Set a late penalty to enable a grace period for the BP Store.
+                </span>
+              )}
+            </div>
+            <div className="acr-field" />
           </>
         )}
 
