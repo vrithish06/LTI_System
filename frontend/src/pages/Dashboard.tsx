@@ -16,8 +16,8 @@ interface Props {
   context: LtiContext;
 }
 
-type Section = 'bp' | 'add_activity' | 'activities' | 'incentives' | 'bp_store';
-const VALID_SECTIONS: Section[] = ['bp', 'add_activity', 'activities', 'incentives', 'bp_store'];
+type Section = 'bp' | 'add_activity' | 'activities' | 'incentives' | 'bp_store' | 'doubt';
+const VALID_SECTIONS: Section[] = ['bp', 'add_activity', 'activities', 'incentives', 'bp_store', 'doubt'];
 
 // ── Path-based routing helpers ──────────────────────────────────────
 // URL shape:  /lti/<section>           e.g. /lti/activities
@@ -132,6 +132,11 @@ export default function Dashboard({ context }: Props) {
   };
 
   const handleNavClick = (section: Section) => {
+    if (section === 'doubt') {
+      const url = isInstructor ? '/doubt/instructor' : '/doubt';
+      window.location.href = url;
+      return;
+    }
     setActiveSection(section);
     setSelectedActivity(null);
     setSelectedActivityId(null);
@@ -193,6 +198,15 @@ export default function Dashboard({ context }: Props) {
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+      ),
+    },
+    {
+      id: 'doubt',
+      label: 'Doubt Exchange',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"></path>
         </svg>
       ),
     },
@@ -289,6 +303,12 @@ export default function Dashboard({ context }: Props) {
               : <StudentIncentivesView context={context} />}
           </div>
         );
+
+      case 'doubt':
+        // We'll navigate to the top-level route because the doubt pages have their own layout (Dashboard doesn't wrap them)
+        // Wait, instead of rendering here, let's just trigger a full navigation when they click it.
+        // I will fix `handleNavClick` below.
+        return null;
 
       default:
         return null;

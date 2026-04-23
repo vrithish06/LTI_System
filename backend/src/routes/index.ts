@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { getSession, sessionCount } from '../session/sessionStore.js';
 
 // Controllers
 import { ltiController } from '../controllers/lti.controller.js';
@@ -9,6 +10,7 @@ import { bpController } from '../controllers/bp.controller.js';
 import { activityController } from '../controllers/activity.controller.js';
 import multer from 'multer';
 import { cloudStorageService } from '../utils/cloud-storage.js';
+import * as doubt from '../controllers/doubt.controller.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -27,6 +29,19 @@ export const router = Router();
 router.post('/launch', ltiController.launch.bind(ltiController));
 router.get('/lti/login', universalLtiController.oidcLogin.bind(universalLtiController));
 router.get('/lti/jwks',  universalLtiController.jwks.bind(universalLtiController));
+
+// ─────────────────────────────────────────────────────────────────
+// SESSION RESTORE  (issued by /launch, kept server-side for clean URLs)
+// GET /api/session/:id  — returns the stored LTI context for a session
+// ─────────────────────────────────────────────────────────────────
+router.get('/session/:id', (req: Request, res: Response) => {
+    const ctx = getSession(req.params.id);
+    if (!ctx) {
+        res.status(404).json({ error: 'Session not found or expired. Please re-launch from Vibe.' });
+        return;
+    }
+    res.json({ success: true, context: ctx });
+});
 
 // ─────────────────────────────────────────────────────────────────
 // QUIZ / EXAM ROUTES
@@ -402,3 +417,41 @@ router.get('/admin/platforms',         adminPlatformController.list.bind(adminPl
 router.get('/admin/platforms/:id',     adminPlatformController.getOne.bind(adminPlatformController));
 router.put('/admin/platforms/:id',     adminPlatformController.update.bind(adminPlatformController));
 router.delete('/admin/platforms/:id',  adminPlatformController.deactivate.bind(adminPlatformController));
+
+// ─────────────────────────────────────────────────────────────────
+// DOUBT EXCHANGE ROUTES
+// ─────────────────────────────────────────────────────────────────
+
+// Config (instructor)
+router.get('/doubt/config/:courseId',            doubt.getConfig);
+router.put('/doubt/config/:courseId',            doubt.updateConfig);
+
+// Student directory
+router.get('/doubt/students/:courseId',          doubt.getStudents);
+
+// Requests
+router.post('/doubt/requests',                   doubt.createRequest);
+router.get('/doubt/requests/:courseId/:userId',  doubt.getMyRequests);
+router.patch('/doubt/requests/:requestId/accept', doubt.acceptRequest);
+router.patch('/doubt/requests/:requestId/reject', doubt.rejectRequest);
+
+// Proof submission (with file upload)
+router.post('/doubt/requests/:requestId/proof',  upload.single('proof'), doubt.submitProof);
+
+// Notifications
+router.get('/doubt/notifications/:userId/:courseId',  doubt.getNotifications);
+router.patch('/doubt/notifications/:userId/:courseId/read', doubt.markRead);
+
+// Instructor: Audit
+router.get('/doubt/audit/:courseId',             doubt.getAuditLog);
+router.patch('/doubt/audit/:requestId/review',   doubt.markReviewed);
+
+// Instructor: Disputes
+router.get('/doubt/disputes/:courseId',          doubt.getDisputes);
+router.post('/doubt/disputes/:requestId/settle', doubt.forceSettle);
+router.post('/doubt/disputes/:requestId/refund', doubt.forceRefund);
+
+// Analytics & Graph
+router.get('/doubt/analytics/:courseId',         doubt.getAnalytics);
+router.get('/doubt/graph/:courseId',             doubt.getEndorsementGraph);
+

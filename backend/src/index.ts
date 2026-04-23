@@ -46,6 +46,12 @@ connectDB().then(() => {
         import('./cron/overdueJob.js').then(({ startCronJobs }) => {
             startCronJobs();
         }).catch(err => console.error("Failed to start cron jobs", err));
+
+        // Doubt Exchange: auto-resolve expired proof windows every hour
+        import('./jobs/doubtAutoResolve.js').then(({ runAutoResolve }) => {
+            runAutoResolve(); // run once on start
+            setInterval(runAutoResolve, 60 * 60 * 1000); // then every hour
+        }).catch(err => console.error("Failed to start doubt auto-resolve", err));
     });
 }).catch((err) => {
     console.error('❌ Failed to start server:', err);

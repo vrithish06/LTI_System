@@ -7,6 +7,8 @@ import ActivityDetail from './pages/ActivityDetail';
 import ActivityCreator from './ActivityCreator';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import DoubtExchange from './pages/doubt/DoubtExchange';
+import DoubtInstructor from './pages/doubt/DoubtInstructor';
 
 export interface LtiContext {
   userId: string;
@@ -26,57 +28,104 @@ export interface LtiContext {
 
 type AppState = 'loading' | 'ready' | 'success' | 'error';
 
+// ─── Session helpers ──────────────────────────────────────────────────────────
+const SESSION_KEY = 'lti_session_id';
+
+function saveSession(id: string) {
+  sessionStorage.setItem(SESSION_KEY, id);
+}
+
+function loadSession(): string | null {
+  return sessionStorage.getItem(SESSION_KEY);
+}
+
+function clearSession() {
+  sessionStorage.removeItem(SESSION_KEY);
+}
+
+/**
+ * Derive a human-readable clean URL from the current LTI mode.
+ * The token and all other query params are stripped.
+ * Tabs are preserved as a simple param so users can bookmark sections.
+ */
+function buildCleanUrl(mode: string | null, role: string, tab?: string): string {
+  let path = '/dashboard';
+
+  if (mode === 'bp_dashboard') path = '/instructor/bp';
+  else if (mode === 'bp_student') path = '/student/bp';
+  else if (mode === 'activity_detail' || mode === 'activity') path = '/activity';
+  else if (mode === 'doubt') path = '/doubt';
+  else if (mode === 'doubt_instructor') path = '/doubt/instructor';
+  else if (mode === 'dashboard' || window.location.pathname.startsWith('/lti')) path = '/dashboard';
+
+  const q = tab ? `?tab=${tab}` : '';
+  return path + q;
+}
+
+// ─── App ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const path = window.location.pathname;
-  if (path === '/admin') {
-    return <AdminDashboard />;
-  }
+  if (path === '/admin') return <AdminDashboard />;
 
   const [state, setState] = useState<AppState>('loading');
   const [context, setContext] = useState<LtiContext | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [hpAwarded, setHpAwarded] = useState<number>(0);
 
-  // Detect launch mode from URL params
   const params = new URLSearchParams(window.location.search);
-  const mode = params.get('mode'); // 'bp_dashboard' for teacher BP management
+  const mode = params.get('mode');
+  const tab  = params.get('tab') || undefined;
 
   useEffect(() => {
-    const token = params.get('lti_token');
+    const ltiToken  = params.get('lti_token');
+    const sessionId = ltiToken ? null : loadSession(); // prefer fresh token over stored session
 
-    if (!token) {
-      setErrorMsg('No LTI token found in URL. This page must be launched from Vibe.');
-      setState('error');
+    // ── Path 1: Fresh LTI launch — exchange token for session ────────────────
+    if (ltiToken) {
+      axios.post('/api/launch', { token: ltiToken })
+        .then(res => {
+          const { context: ctx, sessionId: sid } = res.data;
+
+          // Persist session id so page refreshes don't need the long token
+          if (sid) saveSession(sid);
+
+          setContext(ctx);
+          setState('ready');
+
+          // ✅ Replace the ugly long URL with a clean, readable one
+          const cleanUrl = buildCleanUrl(mode, ctx.role, tab);
+          window.history.replaceState({ sessionId: sid }, '', cleanUrl);
+        })
+        .catch(err => {
+          clearSession();
+          setErrorMsg(err?.response?.data?.detail || err?.response?.data?.error || 'Token validation failed.');
+          setState('error');
+        });
       return;
     }
 
-    // Try loading from session cache to avoid repeating /launch and survive token expiration on reload
-    const cacheKey = `lti_context_${token}`;
-    const cachedStr = sessionStorage.getItem(cacheKey);
-    if (cachedStr) {
-      try {
-        setContext(JSON.parse(cachedStr));
-        setState('ready');
-        return;
-      } catch (e) {
-        sessionStorage.removeItem(cacheKey);
-      }
+    // ── Path 2: Page refresh — restore context from server session ───────────
+    if (sessionId) {
+      axios.get(`/api/session/${sessionId}`)
+        .then(res => {
+          setContext(res.data.context);
+          setState('ready');
+        })
+        .catch(() => {
+          // Session expired — ask user to re-launch from Vibe
+          clearSession();
+          setErrorMsg('Your session has expired. Please re-launch from Vibe to continue.');
+          setState('error');
+        });
+      return;
     }
 
-    axios
-      .post('/api/launch', { token })
-      .then((res) => {
-        sessionStorage.setItem(cacheKey, JSON.stringify(res.data.context));
-        setContext(res.data.context);
-        setState('ready');
-      })
-      .catch((err) => {
-        setErrorMsg(err?.response?.data?.detail || err?.response?.data?.error || 'Token validation failed.');
-        setState('error');
-      });
+    // ── Path 3: No token, no session ─────────────────────────────────────────
+    setErrorMsg('No LTI session found. This page must be launched from Vibe.');
+    setState('error');
   }, []);
 
-  // ── Loading ────────────────────────────────────────────────────────────────
+  // ── Loading ─────────────────────────────────────────────────────────────────
   if (state === 'loading') {
     return (
       <div className="app-wrapper">
@@ -88,7 +137,7 @@ export default function App() {
     );
   }
 
-  // ── Error ──────────────────────────────────────────────────────────────────
+  // ── Error ───────────────────────────────────────────────────────────────────
   if (state === 'error') {
     return (
       <div className="app-wrapper">
@@ -101,7 +150,7 @@ export default function App() {
     );
   }
 
-  // ── Quiz submitted successfully ────────────────────────────────────────────
+  // ── Quiz submitted successfully ──────────────────────────────────────────────
   if (state === 'success') {
     return (
       <div className="app-wrapper">
@@ -115,24 +164,37 @@ export default function App() {
     );
   }
 
-  // ── Unified LTI Dashboard (new single-entry-point mode OR /lti/* paths) ─────
-  if (mode === 'dashboard' || window.location.pathname.startsWith('/lti')) {
-    return <Dashboard context={context} />;
+  // ─── Route by clean path (after URL was replaced) or by original mode ───────
+  const cleanPath = window.location.pathname;
+
+  // Doubt Exchange pages (use resolved context from session)
+  if (cleanPath === '/doubt') return <DoubtExchange context={context!} />;
+  if (cleanPath === '/doubt/instructor' && context?.role === 'Instructor') return <DoubtInstructor context={context!} />;
+
+  // Unified dashboard — all /lti/* paths, /dashboard, or dashboard mode
+  if (
+    cleanPath === '/dashboard' ||
+    cleanPath.startsWith('/lti') ||
+    mode === 'dashboard'
+  ) {
+    return <Dashboard context={context!} />;
   }
 
-  // ── Brownie Points Dashboard (Instructor mode) ─────────────────────────────
-  if (mode === 'bp_dashboard' && context?.role === 'Instructor') {
-    return <BrowniePointsDashboard context={context} />;
+  // Instructor BP dashboard
+  if (cleanPath === '/instructor/bp' || (mode === 'bp_dashboard' && context?.role === 'Instructor')) {
+    return <BrowniePointsDashboard context={context!} />;
   }
 
-  // ── Brownie Points Dashboard (Student mode) ────────────────────────────────
-  if (mode === 'bp_student' && context?.role === 'Learner') {
-    return <StudentBPDashboard context={context} />;
+  // Student BP dashboard
+  if (cleanPath === '/student/bp' || (mode === 'bp_student' && context?.role === 'Learner')) {
+    return <StudentBPDashboard context={context!} />;
   }
 
-  // ── Activity Detail (Student submits an activity) ─────────────────────────
-  // Launched when a student clicks an activity in Vibe (mode=activity_detail)
-  if ((mode === 'activity_detail' || mode === 'activity') && context?.role === 'Learner') {
+  // Activity detail (student)
+  if (
+    cleanPath === '/activity' ||
+    ((mode === 'activity_detail' || mode === 'activity') && context?.role === 'Learner')
+  ) {
     return (
       <div className="app-wrapper">
         <div className="tool-page">
@@ -143,22 +205,16 @@ export default function App() {
             </div>
           </div>
           <ActivityDetail
-            context={context}
-            onSuccess={(hp: number) => {
-              setHpAwarded(hp);
-              setState('success');
-            }}
-            onError={(msg: string) => {
-              setErrorMsg(msg);
-              setState('error');
-            }}
+            context={context!}
+            onSuccess={(hp: number) => { setHpAwarded(hp); setState('success'); }}
+            onError={(msg: string) => { setErrorMsg(msg); setState('error'); }}
           />
         </div>
       </div>
     );
   }
 
-  // ── Deep-linking (Quiz Builder for teacher) ────────────────────────────────
+  // Deep-linking (instructor creates activity)
   if (context?.isDeepLinking) {
     return (
       <div className="app-wrapper">
@@ -171,21 +227,15 @@ export default function App() {
           </div>
           <ActivityCreator
             context={context}
-            onSuccess={(hp: number) => {
-              setHpAwarded(hp);
-              setState('success');
-            }}
-            onError={(msg: string) => {
-              setErrorMsg(msg);
-              setState('error');
-            }}
+            onSuccess={(hp: number) => { setHpAwarded(hp); setState('success'); }}
+            onError={(msg: string) => { setErrorMsg(msg); setState('error'); }}
           />
         </div>
       </div>
     );
   }
 
-  // ── Student Quiz Player ───────────────────────────────────────────────────
+  // Fallback — student quiz player
   return (
     <div className="app-wrapper">
       <div className="tool-page">
@@ -198,14 +248,8 @@ export default function App() {
         {context && (
           <QuizPlayer
             context={context}
-            onSuccess={(hp) => {
-              setHpAwarded(hp);
-              setState('success');
-            }}
-            onError={(msg) => {
-              setErrorMsg(msg);
-              setState('error');
-            }}
+            onSuccess={hp => { setHpAwarded(hp); setState('success'); }}
+            onError={msg => { setErrorMsg(msg); setState('error'); }}
           />
         )}
       </div>

@@ -3,6 +3,7 @@ import { validateLtiToken } from '../lti/ltiValidator.js';
 import { syncRosterForCourse } from '../services/bp.service.js';
 import { syncRosterFromNrps } from '../services/nrps.service.js';
 import { provisionUser } from '../hp/hpService.js';
+import { createSession } from '../session/sessionStore.js';
 
 const VIBE_BASE_URL = process.env.VIBE_BASE_URL || 'http://localhost:3141';
 
@@ -68,7 +69,10 @@ export class LtiController {
                 );
             }
 
-            res.json({ success: true, context });
+            // Issue a server-side session so the frontend can drop the token from the URL
+            const sessionId = createSession(context as unknown as Record<string, any>);
+
+            res.json({ success: true, context, sessionId });
             
         } catch (error: any) {
             console.error('[Launch] Token validation failed:', error.message);
