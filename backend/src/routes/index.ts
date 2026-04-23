@@ -10,7 +10,7 @@ import { activityController } from '../controllers/activity.controller.js';
 import multer from 'multer';
 import { cloudStorageService } from '../utils/cloud-storage.js';
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 /**
  * Main application router linking API paths to initialized controller endpoints.
@@ -38,7 +38,30 @@ router.get('/exam/:title', examController.getExamByTitle.bind(examController));
 // ─────────────────────────────────────────────────────────────────
 // ACTIVITY ROUTES  (server-to-server calls from VIBE backend)
 // ─────────────────────────────────────────────────────────────────
-router.post('/activities', activityController.createOrUpdateActivity.bind(activityController));
+// LTI-facing create/update with optional document upload
+router.post('/activities', upload.single('document'), async (req: Request, res: Response) => {
+    try {
+        let document_url: string | undefined;
+        let document_name: string | undefined;
+        if (req.file) {
+            const activityId = req.body.activity_id ||
+                `${(req.body.courseId || '').toLowerCase()}-${(req.body.title || '').toLowerCase().replace(/\s+/g, '-')}-${Date.now().toString().slice(-4)}`;
+            document_url = await cloudStorageService.uploadActivityDocument(
+                req.file.buffer,
+                req.file.originalname,
+                req.file.mimetype,
+                activityId
+            );
+            document_name = req.file.originalname;
+            req.body.document_url = document_url;
+            req.body.document_name = document_name;
+            req.body.activity_id = activityId;
+        }
+        return activityController.createOrUpdateActivity(req, res);
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to process activity creation', detail: err.message });
+    }
+});
 router.get('/activities/:courseId', activityController.getActivitiesByCourse.bind(activityController));
 router.post('/activities/:activityId/submit', activityController.submitActivity.bind(activityController));
 router.get('/activities/:activityId/submissions/:userId', activityController.getUserSubmissions.bind(activityController));
@@ -163,6 +186,19 @@ router.get('/lti/proof/:fileId', async (req: Request, res: Response) => {
         stream.pipe(res);
     } catch (err: any) {
         res.status(404).json({ error: 'Proof not found', detail: err.message });
+    }
+});
+
+// GET /api/lti/document/:fileId  — instructor-uploaded activity document
+router.get('/lti/document/:fileId', async (req: Request, res: Response) => {
+    try {
+        const { stream, metadata } = await cloudStorageService.downloadDocument(req.params.fileId);
+        const disposition = req.query.download === '1' ? 'attachment' : 'inline';
+        res.setHeader('Content-Disposition', `${disposition}; filename="${metadata.originalName}"`);
+        res.setHeader('Content-Type', metadata.contentType);
+        stream.pipe(res);
+    } catch (err: any) {
+        res.status(404).json({ error: 'Document not found', detail: err.message });
     }
 });
 

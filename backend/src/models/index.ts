@@ -110,6 +110,9 @@ export interface IActivity extends Document {
     rules:        ActivityRules;
     is_mandatory: boolean;
     is_proof_required: boolean;
+    incentives?:  string;
+    document_url?:  string;  // GridFS file ID of instructor-uploaded document
+    document_name?: string;  // Original filename for display/download
     created_at:   Date;
     updated_at:   Date;
 }
@@ -125,6 +128,9 @@ const ActivitySchema = new Schema<IActivity>(
         rules:        { type: Schema.Types.Mixed, default: {} },
         is_mandatory: { type: Boolean, default: true },
         is_proof_required: { type: Boolean, default: false },
+        incentives:       { type: String,  default: '' },
+        document_url:     { type: String,  default: null },
+        document_name:    { type: String,  default: null },
         created_at:   { type: Date,    default: () => new Date() },
         updated_at:   { type: Date,    default: () => new Date() },
     },

@@ -13,6 +13,8 @@ interface ActivityRecord {
   is_mandatory?: boolean;
   is_proof_required?: boolean;
   incentives?: string;       // Professor motivational text
+  document_url?: string;     // GridFS file ID of instructor-uploaded document
+  document_name?: string;    // Original filename
   rules?: {
     reward_hp?: number;
     late_penalty_hp?: number;
@@ -400,6 +402,68 @@ export default function ActivityDetail({ context, onSuccess, onError }: Props) {
             </div>
           </div>
         ) : null}
+
+        {/* ── Instructor Document ── */}
+        {activity.document_url && (
+          <div style={{
+            margin: '0 0 1.25rem',
+            padding: '1rem 1.25rem',
+            background: 'rgba(59,130,246,0.07)',
+            border: '1px solid rgba(59,130,246,0.22)',
+            borderRadius: '12px',
+            display: 'flex', alignItems: 'center', gap: '1rem',
+            flexWrap: 'wrap',
+          }}>
+            <span style={{ fontSize: '1.6rem', flexShrink: 0 }}>📄</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {activity.document_name || 'Attached Document'}
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Uploaded by your instructor
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+              <a
+                href={`/api/lti/document/${activity.document_url}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  padding: '0.45rem 1rem', borderRadius: 8,
+                  background: 'rgba(59,130,246,0.12)', color: '#2563eb',
+                  fontWeight: 700, fontSize: '0.8rem', textDecoration: 'none',
+                  border: '1px solid rgba(59,130,246,0.25)',
+                  display: 'flex', alignItems: 'center', gap: '0.35rem',
+                  transition: 'background 0.15s',
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                View
+              </a>
+              <a
+                href={`/api/lti/document/${activity.document_url}?download=1`}
+                download={activity.document_name || 'document'}
+                style={{
+                  padding: '0.45rem 1rem', borderRadius: 8,
+                  background: '#2563eb', color: '#fff',
+                  fontWeight: 700, fontSize: '0.8rem', textDecoration: 'none',
+                  display: 'flex', alignItems: 'center', gap: '0.35rem',
+                  transition: 'background 0.15s',
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Download
+              </a>
+            </div>
+          </div>
+        )}
 
         {/* ── Stats row ── */}
         <div className="stats-grid">

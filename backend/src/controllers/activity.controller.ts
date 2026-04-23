@@ -82,11 +82,13 @@ export class ActivityController {
                 title,
                 type: activityType,
                 deadline,
-                grace_period: Number(gracePeriodDuration) * 60, // convert hours to minutes
+                grace_period: Number(gracePeriodDuration) * 60,
                 rules,
                 is_mandatory: mandatory !== false,
                 is_proof_required: body.isProofRequired === true,
                 incentives: body.incentives || '',
+                document_url: body.document_url || undefined,
+                document_name: body.document_name || undefined,
             });
 
             // 4. Generate Deep Linking JWT if in deep-linking mode

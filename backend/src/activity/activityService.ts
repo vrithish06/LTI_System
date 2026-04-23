@@ -30,11 +30,11 @@ export async function registerActivity(params: {
     is_mandatory?: boolean;
     is_proof_required?: boolean;
     incentives?: string;
+    document_url?: string;
+    document_name?: string;
 }): Promise<IActivity> {
     await connectDB();
-
     const { activity_id, course_id, title, type, deadline, grace_period, rules, is_mandatory } = params;
-
     const activity = await ActivityModel.findOneAndUpdate(
         { activity_id },
         {
@@ -48,11 +48,12 @@ export async function registerActivity(params: {
                 is_mandatory: is_mandatory !== false,
                 is_proof_required: params.is_proof_required ?? false,
                 incentives: params.incentives ?? '',
+                ...(params.document_url !== undefined && { document_url: params.document_url }),
+                ...(params.document_name !== undefined && { document_name: params.document_name }),
             },
         },
         { upsert: true, new: true },
     );
-
     return activity!;
 }
 
@@ -100,6 +101,8 @@ export async function updateActivity(activity_id: string, updates: Partial<{
     is_mandatory: boolean;
     is_proof_required: boolean;
     incentives: string;
+    document_url: string;
+    document_name: string;
 }>): Promise<IActivity | null> {
     await connectDB();
     const setFields: any = {};
@@ -111,6 +114,8 @@ export async function updateActivity(activity_id: string, updates: Partial<{
     if (updates.is_mandatory !== undefined) setFields.is_mandatory = updates.is_mandatory;
     if (updates.is_proof_required !== undefined) setFields.is_proof_required = updates.is_proof_required;
     if (updates.incentives !== undefined) setFields.incentives = updates.incentives;
+    if (updates.document_url !== undefined) setFields.document_url = updates.document_url;
+    if (updates.document_name !== undefined) setFields.document_name = updates.document_name;
     setFields.updated_at = new Date();
     return ActivityModel.findOneAndUpdate({ activity_id }, { $set: setFields }, { new: true });
 }

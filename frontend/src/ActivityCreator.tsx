@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+
+const MAX_DOC_SIZE_MB = 5;
+const MAX_DOC_SIZE_BYTES = MAX_DOC_SIZE_MB * 1024 * 1024;
 import axios from 'axios';
 import { LtiContext } from './App';
 
@@ -8,8 +11,17 @@ interface ActivityCreatorProps {
   onError: (msg: string) => void;
 }
 
+interface ValidationModal {
+  visible: boolean;
+  message: string;
+}
+
 export default function ActivityCreator({ context, onSuccess, onError }: ActivityCreatorProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [validationModal, setValidationModal] = useState<ValidationModal>({ visible: false, message: '' });
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -17,16 +29,13 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
     deadline: '',
     rewardType: 'ABSOLUTE',
     rewardValue: '10',
-    mandatory: true,
+    mandatory: true,          // ← ON by default
     penaltyType: 'ABSOLUTE',
     penaltyValue: '0',
-    submissionMode: 'IN_PLATFORM',
     status: 'PUBLISHED',
     isProofRequired: true,
     hpAssignmentMode: 'AUTOMATIC',
     gracePeriodDuration: '0',
-    graceRewardPercentage: '100',
-    // VIBE_MILESTONE specific
     targetPercent: '50',
   });
 
@@ -38,39 +47,80 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
     }));
   };
 
+  const showValidationError = (message: string) => {
+    setValidationModal({ visible: true, message });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const isMilestone = formData.activityType === 'VIBE_MILESTONE';
-    if (!formData.title) {
-      alert('Please fill in the activity title.');
+
+    // ── Validations ──────────────────────────────────────────────────
+    if (!formData.title.trim()) {
+      showValidationError('Please fill in the activity title.');
       return;
     }
     if (!isMilestone && !formData.deadline) {
-      alert('Please fill in the deadline.');
+      showValidationError('Please set a deadline for this activity.');
       return;
     }
     if (isMilestone && (Number(formData.targetPercent) <= 0 || Number(formData.targetPercent) > 100)) {
-      alert('Target Completion % must be between 1 and 100.');
+      showValidationError('Target Completion % must be between 1 and 100.');
       return;
     }
+
+    const rewardVal = Number(formData.rewardValue);
+    const penaltyVal = Number(formData.penaltyValue);
+
+    if (rewardVal <= 0) {
+      showValidationError('Reward value must be greater than 0.');
+      return;
+    }
+
+    // Reward must be strictly greater than penalty
+    if (formData.mandatory && penaltyVal > 0 && penaltyVal >= rewardVal) {
+      showValidationError(
+        `Penalty value (${penaltyVal} BP) must be less than the reward value (${rewardVal} BP).\n\nStudents should always have an incentive to submit — even late submissions should yield some net positive reward.`
+      );
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const requestBody = {
-        ...formData,
-        courseId: context.courseId,
-        courseVersionId: context.courseVersionId,
-        isMandatory: formData.mandatory,
-        rewardValue: Number(formData.rewardValue),
-        gracePeriodDuration: Number(formData.gracePeriodDuration),
-        graceRewardPercentage: Number(formData.graceRewardPercentage),
-        deadline: isMilestone ? null : new Date(formData.deadline).toISOString(),
-        penaltyType: formData.mandatory ? formData.penaltyType : null,
-        penaltyValue: formData.mandatory ? Number(formData.penaltyValue) : null,
-        targetPercent: isMilestone ? Number(formData.targetPercent) : undefined,
-        context,
-      };
+      const formPayload = new FormData();
 
-      const response = await axios.post('/api/activities', requestBody);
+      // Append all text fields
+      formPayload.append('title', formData.title);
+      formPayload.append('description', formData.description);
+      formPayload.append('activityType', formData.activityType);
+      formPayload.append('courseId', context.courseId);
+      formPayload.append('courseVersionId', context.courseVersionId);
+      formPayload.append('isMandatory', String(formData.mandatory));
+      formPayload.append('mandatory', String(formData.mandatory));
+      formPayload.append('rewardType', formData.rewardType);
+      formPayload.append('rewardValue', String(rewardVal));
+      formPayload.append('gracePeriodDuration', formData.gracePeriodDuration);
+      formPayload.append('graceRewardPercentage', '100'); // always 100% — no extra reduction
+      formPayload.append('isProofRequired', String(formData.isProofRequired));
+      formPayload.append('hpAssignmentMode', formData.hpAssignmentMode);
+      formPayload.append('status', formData.status);
+      formPayload.append('penaltyType', formData.mandatory ? formData.penaltyType : 'ABSOLUTE');
+      formPayload.append('penaltyValue', formData.mandatory ? String(penaltyVal) : '0');
+      if (isMilestone) {
+        formPayload.append('targetPercent', formData.targetPercent);
+      } else {
+        formPayload.append('deadline', new Date(formData.deadline).toISOString());
+      }
+      formPayload.append('context', JSON.stringify(context));
+
+      // Attach document if uploaded
+      if (documentFile) {
+        formPayload.append('document', documentFile);
+      }
+
+      const response = await axios.post('/api/activities', formPayload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
 
       if (response.data.success) {
         if (context.isDeepLinking && context.deepLinkReturnUrl && response.data.JWT) {
@@ -86,21 +136,74 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
           form.submit();
           return;
         }
-        onSuccess(requestBody.rewardValue);
+        onSuccess(rewardVal);
         if (context.isDeepLinking) window.close();
       }
     } catch (error: any) {
       console.error('Activity creation error:', error);
       const msg = error.response?.data?.error || error.response?.data?.message || 'Failed to create activity';
-      alert(`Error: ${msg}`);
+      showValidationError(`Error: ${msg}`);
       onError(msg);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const isMilestone = formData.activityType === 'VIBE_MILESTONE';
+
   return (
     <div className="activity-creator-form">
+      {/* ── Validation Modal ── */}
+      {validationModal.visible && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1rem',
+          }}
+          onClick={() => setValidationModal({ visible: false, message: '' })}
+        >
+          <div
+            style={{
+              background: '#fff', borderRadius: 16, padding: '2rem',
+              maxWidth: 440, width: '100%',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+              animation: 'slideUp 0.2s ease',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.85rem' }}>
+              <span style={{
+                fontSize: '1.8rem', flexShrink: 0,
+                width: 44, height: 44, borderRadius: '50%',
+                background: 'rgba(239,68,68,0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>⚠️</span>
+              <div>
+                <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 800, color: '#111' }}>
+                  Cannot Create Activity
+                </h3>
+                <p style={{ margin: 0, color: '#555', lineHeight: 1.65, fontSize: '0.9rem', whiteSpace: 'pre-wrap' }}>
+                  {validationModal.message}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setValidationModal({ visible: false, message: '' })}
+              style={{
+                marginTop: '1.5rem', width: '100%',
+                padding: '0.65rem', borderRadius: 8,
+                background: '#ef4444', color: '#fff',
+                border: 'none', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+              }}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="acr-header">
         <div className="acr-header-icon">✨</div>
@@ -113,7 +216,7 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
       </div>
 
       <form onSubmit={handleSubmit} className="acr-form">
-        {/* ── Full: Title ── */}
+        {/* ── Title ── */}
         <div className="acr-field acr-full">
           <label className="acr-label">Title <span className="acr-req">*</span></label>
           <input
@@ -122,7 +225,7 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
           />
         </div>
 
-        {/* ── Full: Description ── */}
+        {/* ── Description ── */}
         <div className="acr-field acr-full">
           <label className="acr-label">Description</label>
           <textarea
@@ -131,7 +234,7 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
           />
         </div>
 
-        {/* ── Row: Activity Type + Submission Mode ── */}
+        {/* ── Activity Type (full width, submission mode REMOVED) ── */}
         <div className="acr-field">
           <label className="acr-label">Activity Type</label>
           <select name="activityType" value={formData.activityType} onChange={handleChange} className="acr-input">
@@ -140,27 +243,8 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
           </select>
         </div>
 
-        <div className="acr-field">
-          <label className="acr-label">Submission Mode</label>
-          <select name="submissionMode" value={formData.submissionMode} onChange={handleChange} className="acr-input">
-            <option value="IN_PLATFORM">In Platform</option>
-            <option value="EXTERNAL_LINK">External Link</option>
-            <option value="CSV_IMPORT">CSV Import</option>
-          </select>
-        </div>
-
-        {/* ── Row: Deadline + HP Assignment Mode ── */}
-        {formData.activityType !== 'VIBE_MILESTONE' && (
-          <div className="acr-field">
-            <label className="acr-label">Deadline <span className="acr-req">*</span></label>
-            <input
-              type="datetime-local" name="deadline" value={formData.deadline}
-              onChange={handleChange} className="acr-input"
-            />
-          </div>
-        )}
-
-        {formData.activityType !== 'VIBE_MILESTONE' && (
+        {/* ── HP Assignment Mode ── */}
+        {!isMilestone && (
           <div className="acr-field">
             <label className="acr-label">HP Assignment Mode</label>
             <select name="hpAssignmentMode" value={formData.hpAssignmentMode} onChange={handleChange} className="acr-input">
@@ -170,8 +254,19 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
           </div>
         )}
 
-        {/* ── VIBE Milestone specific fields ── */}
-        {formData.activityType === 'VIBE_MILESTONE' && (
+        {/* ── Deadline ── */}
+        {!isMilestone && (
+          <div className="acr-field">
+            <label className="acr-label">Deadline <span className="acr-req">*</span></label>
+            <input
+              type="datetime-local" name="deadline" value={formData.deadline}
+              onChange={handleChange} className="acr-input"
+            />
+          </div>
+        )}
+
+        {/* ── VIBE Milestone fields ── */}
+        {isMilestone && (
           <>
             <div className="acr-field acr-full" style={{ background: 'hsl(38,90%,97%)', border: '1px solid hsl(38,70%,82%)', borderRadius: 10, padding: '14px 16px', marginTop: 4 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -179,8 +274,7 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
                 <div>
                   <p style={{ margin: 0, fontWeight: 700, fontSize: '0.9rem', color: 'hsl(30,60%,28%)' }}>LMS Milestone — How it works</p>
                   <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'hsl(30,40%,40%)' }}>
-                    When a student's course completion reaches the target percentage, Vibe automatically notifies the LTI tool via a real-time webhook and the student is instantly awarded the configured BP.
-                    Works with any LMS that supports progress webhooks.
+                    When a student's course completion reaches the target percentage, Vibe automatically notifies the LTI tool and the student is instantly awarded the configured BP.
                   </p>
                 </div>
               </div>
@@ -190,8 +284,7 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
               <input
                 type="number" name="targetPercent" value={formData.targetPercent}
                 onChange={handleChange} className="acr-input"
-                min={1} max={100} step={1}
-                placeholder="e.g. 50"
+                min={1} max={100} step={1} placeholder="e.g. 50"
               />
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, display: 'block' }}>
                 BP is awarded once when this threshold is crossed.
@@ -203,7 +296,7 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
 
         <div className="acr-divider acr-full" />
 
-        {/* ── Row: Reward Type + Reward Value ── */}
+        {/* ── Reward ── */}
         <div className="acr-field">
           <label className="acr-label">Reward Type</label>
           <select name="rewardType" value={formData.rewardType} onChange={handleChange} className="acr-input">
@@ -213,30 +306,28 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
         </div>
 
         <div className="acr-field">
-          <label className="acr-label">Reward Value (BP)</label>
-          <input type="number" name="rewardValue" value={formData.rewardValue} onChange={handleChange} className="acr-input" />
+          <label className="acr-label">Reward Value (BP) <span className="acr-req">*</span></label>
+          <input
+            type="number" name="rewardValue" value={formData.rewardValue}
+            onChange={handleChange} className="acr-input" min={1}
+          />
         </div>
 
-        {/* ── Row: Grace Period (hidden for milestones) ── */}
-        {formData.activityType !== 'VIBE_MILESTONE' && (
+        {/* ── Grace Period ── */}
+        {!isMilestone && (
           <>
             <div className="acr-field">
               <label className="acr-label">Grace Period (Hours)</label>
-              <input type="number" name="gracePeriodDuration" value={formData.gracePeriodDuration} onChange={handleChange} className="acr-input" />
+              <input type="number" name="gracePeriodDuration" value={formData.gracePeriodDuration} onChange={handleChange} className="acr-input" min={0} />
             </div>
-            {Number(formData.gracePeriodDuration) > 0 ? (
-              <div className="acr-field">
-                <label className="acr-label">Grace Reward (%)</label>
-                <input type="number" name="graceRewardPercentage" value={formData.graceRewardPercentage} onChange={handleChange} className="acr-input" />
-              </div>
-            ) : <div className="acr-field" />}
+            <div className="acr-field" />
           </>
         )}
 
         <div className="acr-divider acr-full" />
 
-        {/* ── Checkboxes + Penalty (hidden for VIBE_MILESTONE) ── */}
-        {formData.activityType !== 'VIBE_MILESTONE' && (
+        {/* ── Checkboxes + Penalty ── */}
+        {!isMilestone && (
           <>
             <div className="acr-checks acr-full">
               <label className="acr-check-row">
@@ -264,13 +355,116 @@ export default function ActivityCreator({ context, onSuccess, onError }: Activit
                   </select>
                 </div>
                 <div className="acr-field">
-                  <label className="acr-label">Penalty Value</label>
-                  <input type="number" name="penaltyValue" value={formData.penaltyValue} onChange={handleChange} className="acr-input" />
+                  <label className="acr-label">
+                    Penalty Value
+                    {Number(formData.penaltyValue) > 0 && Number(formData.rewardValue) > 0 && (
+                      <span style={{
+                        marginLeft: '0.5rem', fontSize: '0.72rem', fontWeight: 600,
+                        color: Number(formData.penaltyValue) >= Number(formData.rewardValue) ? '#ef4444' : '#10b981',
+                      }}>
+                        {Number(formData.penaltyValue) >= Number(formData.rewardValue)
+                          ? '⚠ Must be less than reward'
+                          : `✓ Net reward: +${Number(formData.rewardValue) - Number(formData.penaltyValue)} BP`}
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="number" name="penaltyValue" value={formData.penaltyValue}
+                    onChange={handleChange} className="acr-input" min={0}
+                    style={{
+                      borderColor: Number(formData.penaltyValue) >= Number(formData.rewardValue) && Number(formData.penaltyValue) > 0
+                        ? '#ef4444' : undefined,
+                    }}
+                  />
                 </div>
               </>
             )}
           </>
         )}
+
+        <div className="acr-divider acr-full" />
+
+        {/* ── Instructor Document Upload ── */}
+        <div className="acr-field acr-full">
+          <label className="acr-label">
+            Attach Document
+            <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: '0.5rem', fontSize: '0.78rem' }}>
+              (optional — students can view &amp; download this)
+            </span>
+          </label>
+
+          <div
+            style={{
+              border: `2px dashed ${documentFile ? 'hsl(258,70%,60%)' : 'var(--border)'}`,
+              borderRadius: 10, padding: '1.25rem',
+              background: documentFile ? 'rgba(139,92,246,0.04)' : 'var(--bg-secondary)',
+              cursor: 'pointer', transition: 'all 0.2s',
+              display: 'flex', alignItems: 'center', gap: '0.85rem',
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={e => { e.preventDefault(); }}
+            onDrop={e => {
+              e.preventDefault();
+              const file = e.dataTransfer.files?.[0];
+              if (file) {
+                if (file.size > MAX_DOC_SIZE_BYTES) {
+                  showValidationError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is ${MAX_DOC_SIZE_MB} MB.`);
+                  return;
+                }
+                setDocumentFile(file);
+              }
+            }}
+          >
+            <span style={{ fontSize: '1.8rem', flexShrink: 0 }}>
+              {documentFile ? '📎' : '📄'}
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {documentFile ? (
+                <>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {documentFile.name}
+                  </p>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {(documentFile.size / 1024).toFixed(1)} KB · Click to change
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p style={{ margin: 0, fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
+                    Click to upload or drag &amp; drop
+                  </p>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    PDF, DOCX, PPTX, images — max 5 MB
+                  </p>
+                </>
+              )}
+            </div>
+            {documentFile && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setDocumentFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '1.1rem', flexShrink: 0, padding: '4px' }}
+                title="Remove file"
+              >✕</button>
+            )}
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.gif,.zip"
+            style={{ display: 'none' }}
+            onChange={e => {
+              const file = e.target.files?.[0] || null;
+              if (file && file.size > MAX_DOC_SIZE_BYTES) {
+                showValidationError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is ${MAX_DOC_SIZE_MB} MB.`);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+                return;
+              }
+              setDocumentFile(file);
+            }}
+          />
+        </div>
 
         {/* ── Submit ── */}
         <div className="acr-actions acr-full">
