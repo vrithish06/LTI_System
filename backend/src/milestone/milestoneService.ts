@@ -15,6 +15,7 @@ import {
 } from '../models/index.js';
 import { ProcessedMilestoneModel } from '../models/processedMilestone.js';
 import { applyReward } from '../hp/hpService.js';
+import { sysNotify } from '../models/SystemNotification.js';
 
 const LTI_SHARED_SECRET =
     process.env.LTI_SHARED_SECRET || 'vibe-lti-shared-secret-change-in-production';
@@ -123,6 +124,12 @@ export async function checkAndAwardMilestones(
         details.push(
             `Awarded ${rewardBp} BP for milestone "${milestone.title}" (target: ${targetPercent}%)`,
         );
+        // Fire system notification
+        sysNotify(
+            userId, courseId, 'milestone_reached',
+            '🏆 Milestone Reached!',
+            `You earned ${rewardBp} BP for reaching ${targetPercent}% completion — "${milestone.title}"`
+        ).catch(() => {});
         console.log(
             `[Milestone] ✅ Awarded ${rewardBp} BP to user ${userId} for "${milestone.title}"`,
         );

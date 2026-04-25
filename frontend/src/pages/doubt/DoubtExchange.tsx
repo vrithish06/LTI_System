@@ -4,7 +4,7 @@ import { LtiContext } from '../../App';
 import EndorsementGraph from './EndorsementGraph';
 import '../../index.css';
 
-interface Student { studentId: string; studentName: string; points: number; }
+interface Student { studentId: string; studentName: string; studentEmail: string; points: number; }
 interface DoubtRequest {
   _id: string; course_id: string; student_a_id: string; student_a_name: string;
   student_b_id: string; student_b_name: string; topic: string; description: string;
@@ -56,7 +56,7 @@ export default function DoubtExchange({ context }: { context: LtiContext }) {
     const [studRes, reqRes, graphRes, notifRes, cfgRes, bpRes] = await Promise.allSettled([
       axios.get(`/api/doubt/students/${cId}?userId=${uId}`),
       axios.get(`/api/doubt/requests/${cId}/${uId}`),
-      axios.get(`/api/doubt/graph/${cId}?userId=${uId}`),
+      axios.get(`/api/doubt/graph/${cId}`),
       axios.get(`/api/doubt/notifications/${uId}/${cId}`),
       axios.get(`/api/doubt/config/${cId}`),
       axios.get(`/api/bp/${cId}`),
@@ -86,7 +86,7 @@ export default function DoubtExchange({ context }: { context: LtiContext }) {
         studentBId: selected.studentId, studentBName: selected.studentName,
         topic, description: desc, bpOffer,
       });
-      showToast('Request sent! BP locked in escrow.');
+      showToast('Request sent! BP is held until the session is confirmed.');
       setSelected(null); setTopic(''); setDesc(''); setBpOffer(10);
       await load();
     } catch (e: any) { showToast(e.response?.data?.error || 'Failed.', 'error'); }
@@ -114,8 +114,8 @@ export default function DoubtExchange({ context }: { context: LtiContext }) {
       if (claim === 'happened' && proofFile) fd.append('proof', proofFile);
       await axios.post(`/api/doubt/requests/${proofModal.requestId}/proof`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       showToast('Claim submitted!');
-    setProofModal(null); setProofFile(null); setClaim(null); setConfirmStep(false);
-    load();
+      setProofModal(null); setProofFile(null); setClaim(null); setConfirmStep(false);
+      load();
     } catch (e: any) { showToast(e.response?.data?.error || 'Failed.', 'error'); }
     setSubmittingProof(false);
   };
@@ -126,7 +126,10 @@ export default function DoubtExchange({ context }: { context: LtiContext }) {
   };
 
   const unread = notifs.filter(n => !n.is_read).length;
-  const filtered = students.filter(s => s.studentName.toLowerCase().includes(search.toLowerCase()));
+  const filtered = students.filter(s =>
+    s.studentName.toLowerCase().includes(search.toLowerCase()) ||
+    s.studentEmail?.toLowerCase().includes(search.toLowerCase())
+  );
   const incoming = requests.filter(r => r.student_b_id === context.userId && r.status === 'pending');
   const active = requests.filter(r => ['active', 'proof_pending'].includes(r.status));
   const myParty = (r: DoubtRequest) => r.student_a_id === context.userId ? 'A' : 'B';
@@ -137,37 +140,6 @@ export default function DoubtExchange({ context }: { context: LtiContext }) {
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '1.5rem' }}>
       {toast && <div className={`toast-notification ${toast.type}`}>{toast.msg}</div>}
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>🧠 Doubt Exchange</h1>
-          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Ask • Help • Earn BP</p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.25)', borderRadius: 10, padding: '8px 16px', fontWeight: 700, color: '#8b5cf6', fontSize: '0.9rem' }}>
-            🍪 {myBP.toFixed(2)} BP
-          </div>
-          <div style={{ position: 'relative' }}>
-            <button onClick={() => { setShowNotifs(!showNotifs); if (!showNotifs) markAllRead(); }}
-              style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', position: 'relative', fontSize: '1.1rem' }}>
-              🔔
-              {unread > 0 && <span style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: '#fff', borderRadius: '50%', width: 16, height: 16, fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{unread}</span>}
-            </button>
-            {showNotifs && (
-              <div style={{ position: 'absolute', right: 0, top: 44, width: 320, background: '#fff', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.15)', zIndex: 100, maxHeight: 400, overflowY: 'auto' }}>
-                <div style={{ padding: '12px 16px', fontWeight: 700, borderBottom: '1px solid var(--border)', fontSize: '0.85rem' }}>Notifications</div>
-                {notifs.length === 0 ? <p style={{ padding: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center' }}>No notifications yet.</p> :
-                  notifs.map(n => (
-                    <div key={n._id} style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: n.is_read ? 'transparent' : 'rgba(139,92,246,0.04)', fontSize: '0.82rem', color: 'var(--text-primary)' }}>
-                      <p style={{ margin: 0 }}>{n.message}</p>
-                      <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: 'var(--text-muted)' }}>{new Date(n.created_at).toLocaleString()}</p>
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
 
       {/* Incoming requests badge */}
       {incoming.length > 0 && (
@@ -192,13 +164,18 @@ export default function DoubtExchange({ context }: { context: LtiContext }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
           <div className="detail-card" style={{ padding: '1.25rem' }}>
             <h3 style={{ margin: '0 0 1rem', fontWeight: 700 }}>Find a Student</h3>
-            <input className="search-input" placeholder="Search by name…" value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: '0.75rem' }} />
+            <input className="search-input" placeholder="Search by name or email…" value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: '0.75rem' }} />
             <div style={{ maxHeight: 320, overflowY: 'auto' }}>
               {filtered.map(s => (
                 <div key={s.studentId} onClick={() => setSelected(s)}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderRadius: 8, cursor: 'pointer', background: selected?.studentId === s.studentId ? 'rgba(139,92,246,0.12)' : 'transparent', border: selected?.studentId === s.studentId ? '1px solid rgba(139,92,246,0.3)' : '1px solid transparent', marginBottom: 4, transition: 'all 0.15s' }}>
-                  <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>{s.studentName}</span>
-                  <span style={{ fontSize: '0.78rem', color: '#8b5cf6', fontWeight: 600 }}>🍪 {s.points.toFixed(1)}</span>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{s.studentName}</div>
+                    {s.studentEmail && (
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 1 }}>{s.studentEmail}</div>
+                    )}
+                  </div>
+                  <span style={{ fontSize: '0.78rem', color: '#8b5cf6', fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>🍪 {s.points.toFixed(1)}</span>
                 </div>
               ))}
               {filtered.length === 0 && <p style={{ color: 'var(--text-muted)', textAlign: 'center', fontSize: '0.85rem' }}>No students found.</p>}
@@ -226,7 +203,7 @@ export default function DoubtExchange({ context }: { context: LtiContext }) {
                 {bpOffer > myBP && <p style={{ color: '#ef4444', fontSize: '0.78rem', margin: '4px 0 0' }}>⚠ Insufficient balance</p>}
               </div>
               <button className="btn-primary" onClick={sendRequest} disabled={submitting || !selected || !topic.trim()} style={{ marginTop: '0.5rem' }}>
-                {submitting ? 'Sending…' : `🚀 Send Request (${bpOffer} BP into escrow)`}
+                {submitting ? 'Sending…' : `🚀 Send Request`}
               </button>
             </div>
           </div>
@@ -300,7 +277,8 @@ export default function DoubtExchange({ context }: { context: LtiContext }) {
 
       {/* ── NETWORK GRAPH ── */}
       {tab === 'graph' && (
-        <div>
+        <div className="detail-card" style={{ padding: '1.25rem' }}>
+          <h3 style={{ margin: '0 0 1rem', fontWeight: 700 }}>Class Endorsement Network</h3>
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
             {(['personal', 'full'] as const).map(m => (
               <button key={m} onClick={() => setGraphMode(m)}
@@ -311,9 +289,9 @@ export default function DoubtExchange({ context }: { context: LtiContext }) {
           </div>
           <EndorsementGraph edges={fullEdges} currentUserId={context.userId}
             onNodeClick={(id, name) => { setSelected({ studentId: id, studentName: name, points: 0 }); setTab('send'); }} />
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.75rem' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>💡 Click a node to pre-fill send request. Zoom & drag supported. Yellow = you. Node size = doubts cleared.</span>
-          </div>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+            Arrows point from asker → helper. Edge color = topic. Node size = doubts cleared. Zoom &amp; drag supported. Yellow = you.
+          </p>
         </div>
       )}
 

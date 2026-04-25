@@ -108,14 +108,6 @@ export default function StudentBPDashboard({ context }: Props) {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: 0 }}>
 
-      {/* ── Header ── */}
-      <div style={{ background: '#fff', borderBottom: '1px solid var(--border)', padding: '20px 32px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-        <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0, color: 'white', fontWeight: 'bold' }}>BP</div>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>My Brownie Points</h1>
-          <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>{courseName || 'Course Dashboard'} &nbsp;·&nbsp; {context.userName}</p>
-        </div>
-      </div>
 
       <div style={{ padding: '28px 24px 40px' }}>
 

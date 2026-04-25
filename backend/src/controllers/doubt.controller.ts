@@ -8,10 +8,23 @@ import {
 import { BrowniePointModel } from '../models/BrowniePoint.js';
 import mongoose from 'mongoose';
 import { cloudStorageService } from '../utils/cloud-storage.js';
+import { sysNotify } from '../models/SystemNotification.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 async function notify(userId: string, courseId: string, type: string, message: string, requestId?: string) {
+    // Keep doubt-specific notifications for backward compat (in-module use)
     await DoubtNotificationModel.create({ user_id: userId, course_id: courseId, type, message, request_id: requestId });
+    // Also fire unified system notification
+    const titles: Record<string, string> = {
+        request_received: '🤝 New Peer Connect Request',
+        request_accepted: '✅ Request Accepted',
+        request_rejected: '❌ Request Rejected',
+        request_resolved: '🎉 Session Resolved',
+        dispute_opened:   '⚖️ Dispute Opened',
+        dispute_resolved: '✅ Dispute Resolved',
+    };
+    const sysType: any = type.startsWith('request') ? `peer_connect_${type.replace('request_','')}` : `peer_connect_${type.replace('dispute_','')}`;
+    await sysNotify(userId, courseId, sysType, titles[type] || '🤝 Peer Connect Update', message);
 }
 
 async function adjustBP(studentId: string, courseId: string, delta: number, reason: string, by: string) {
@@ -30,7 +43,7 @@ async function resolveRequest(request: IDoubtRequest, claimA: ProofClaim, claimB
     const reqId = (_id as any).toString();
 
     if (claimA === 'happened' && claimB === 'happened') {
-        // Release escrow → B, award BP to B
+        // BP transferred to helper
         await adjustBP(student_b_id, course_id, bp_offer, `Doubt session cleared: ${topic}`, resolvedBy);
         await DoubtRequestModel.findByIdAndUpdate(_id, { status: 'resolved' });
         await DoubtTransactionModel.create({
@@ -93,7 +106,7 @@ export async function getStudents(req: Request, res: Response) {
     await connectDB();
     const { courseId } = req.params;
     const { userId } = req.query;
-    const students = await BrowniePointModel.find({ courseId }, { studentId: 1, studentName: 1, points: 1, _id: 0 }).lean();
+    const students = await BrowniePointModel.find({ courseId }, { studentId: 1, studentName: 1, studentEmail: 1, points: 1, _id: 0 }).lean();
     const filtered = students.filter(s => s.studentId !== userId);
     res.json({ success: true, data: filtered });
 }
@@ -118,8 +131,8 @@ export async function createRequest(req: Request, res: Response) {
         });
         if (existing) { res.status(409).json({ error: 'You already have an active request to this student.' }); return; }
 
-        // Escrow: deduct BP from A
-        await adjustBP(studentAId, courseId, -bpOffer, `Escrow for doubt request to ${studentBName}: ${topic}`, 'system');
+        // Hold BP while request is pending
+        await adjustBP(studentAId, courseId, -bpOffer, `BP held for Peer Connect request to ${studentBName}: ${topic}`, 'system');
 
         const request = await DoubtRequestModel.create({
             course_id: courseId, student_a_id: studentAId, student_a_name: studentAName,
@@ -157,7 +170,7 @@ export async function rejectRequest(req: Request, res: Response) {
     const request = await DoubtRequestModel.findById(requestId);
     if (!request || request.status !== 'pending') { res.status(404).json({ error: 'Request not found or not pending.' }); return; }
 
-    // Refund escrow to A
+    // Refund held BP to A
     await adjustBP(request.student_a_id, request.course_id, request.bp_offer,
         `Refund: ${request.student_b_name} rejected your doubt request on "${request.topic}"`, 'system');
     await DoubtRequestModel.findByIdAndUpdate(requestId, { status: 'cancelled' });
@@ -289,13 +302,14 @@ export async function forceSettle(req: Request, res: Response) {
     await connectDB();
     try {
         const { requestId } = req.params;
-        const { instructorId } = req.body;
+        const { instructorId, instructorName } = req.body;
+        const byLabel = instructorName || instructorId;
         const request = await DoubtRequestModel.findById(requestId);
         if (!request) { res.status(404).json({ error: 'Request not found.' }); return; }
 
-        // Release escrow → B
+        // Release held BP → B
         await adjustBP(request.student_b_id, request.course_id, request.bp_offer,
-            `Force settled by instructor: ${request.topic}`, instructorId);
+            `Force settled by instructor: ${request.topic}`, byLabel);
 
         // Determine who lied and apply 10% penalty
         const proofs = await ProofSubmissionModel.find({ request_id: requestId });
@@ -314,7 +328,7 @@ export async function forceSettle(req: Request, res: Response) {
             const bal = await BrowniePointModel.findOne({ studentId: penaltyStudentId, courseId: request.course_id });
             penalty = Math.floor((bal?.points || 0) * 0.1);
             if (penalty > 0) {
-                await adjustBP(penaltyStudentId, request.course_id, -penalty, 'Fraud penalty (10%) applied by instructor', instructorId);
+                await adjustBP(penaltyStudentId, request.course_id, -penalty, 'Fraud penalty (10%) applied by instructor', byLabel);
             }
         }
 
@@ -350,13 +364,14 @@ export async function forceRefund(req: Request, res: Response) {
     await connectDB();
     try {
         const { requestId } = req.params;
-        const { instructorId } = req.body;
+        const { instructorId, instructorName } = req.body;
+        const byLabel = instructorName || instructorId;
         const request = await DoubtRequestModel.findById(requestId);
         if (!request) { res.status(404).json({ error: 'Request not found.' }); return; }
 
-        // Return escrow → A
+        // Return held BP → A
         await adjustBP(request.student_a_id, request.course_id, request.bp_offer,
-            `Force refunded by instructor: ${request.topic}`, instructorId);
+            `Force refunded by instructor: ${request.topic}`, byLabel);
 
         // Penalty: whoever said "happened" when meeting didn't happen
         const proofs = await ProofSubmissionModel.find({ request_id: requestId });
@@ -370,7 +385,7 @@ export async function forceRefund(req: Request, res: Response) {
             const bal = await BrowniePointModel.findOne({ studentId: penaltyStudentId, courseId: request.course_id });
             penalty = Math.floor((bal?.points || 0) * 0.1);
             if (penalty > 0) {
-                await adjustBP(penaltyStudentId, request.course_id, -penalty, 'Fraud penalty (10%) applied by instructor', instructorId);
+                await adjustBP(penaltyStudentId, request.course_id, -penalty, 'Fraud penalty (10%) applied by instructor', byLabel);
             }
         }
 

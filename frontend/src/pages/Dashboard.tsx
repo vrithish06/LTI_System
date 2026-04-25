@@ -9,6 +9,8 @@ import InstructorActivitiesManager from './InstructorActivitiesManager';
 import ActivityDetail from './ActivityDetail';
 import BPStore from './BPStore';
 import { InstructorIncentivesPanel, StudentIncentivesView } from './CourseIncentives';
+import DoubtExchange from './doubt/DoubtExchange';
+import DoubtInstructor from './doubt/DoubtInstructor';
 import type { ActivityRecord } from './ActivitiesTypes';
 import '../index.css';
 
@@ -63,8 +65,12 @@ export default function Dashboard({ context }: Props) {
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(() => getInitialState().activityId);
   const [selectedActivity, setSelectedActivity] = useState<ActivityRecord | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [courseName, setCourseName] = useState(context.courseName || '');
   const [allActivities, setAllActivities] = useState<ActivityRecord[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [userBp, setUserBp] = useState<number | null>(null);
 
   // On first load: write correct path without adding an extra history entry
   useEffect(() => {
@@ -101,6 +107,47 @@ export default function Dashboard({ context }: Props) {
     }
   }, [courseName, context.courseId]);
 
+  // Fetch unified system notifications
+  const fetchNotifications = () => {
+    if (!context.userId || !context.courseId) return;
+    import('axios').then(({ default: axios }) => {
+      axios.get(`/api/notifications/${context.userId}/${context.courseId}`)
+        .then(res => setNotifications(res.data.data || []))
+        .catch(console.error);
+    });
+  };
+
+  const fetchUserBp = () => {
+    if (isInstructor || !context.userId || !context.courseId) return;
+    import('axios').then(({ default: axios }) => {
+      axios.get(`/api/bp/student/${context.courseId}/${context.userId}`)
+        .then(res => {
+          if (res.data.success) {
+            setUserBp(res.data.record?.points ?? 0);
+          }
+        })
+        .catch(console.error);
+    });
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    fetchUserBp();
+    const interval = setInterval(() => {
+      fetchNotifications();
+      fetchUserBp();
+    }, 30000); // poll every 30s
+    return () => clearInterval(interval);
+  }, [context.userId, context.courseId]);
+
+  const markAllNotificationsRead = () => {
+    import('axios').then(({ default: axios }) => {
+      axios.patch(`/api/notifications/${context.userId}/${context.courseId}/read`)
+        .then(() => setNotifications(n => n.map(x => ({ ...x, is_read: true }))))
+        .catch(console.error);
+    });
+  };
+
   // Listen to browser back/forward button
   useEffect(() => {
     const onPop = () => {
@@ -132,11 +179,6 @@ export default function Dashboard({ context }: Props) {
   };
 
   const handleNavClick = (section: Section) => {
-    if (section === 'doubt') {
-      const url = isInstructor ? '/doubt/instructor' : '/doubt';
-      window.location.href = url;
-      return;
-    }
     setActiveSection(section);
     setSelectedActivity(null);
     setSelectedActivityId(null);
@@ -197,16 +239,19 @@ export default function Dashboard({ context }: Props) {
       label: 'BP Incentives',
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
         </svg>
       ),
     },
     {
       id: 'doubt',
-      label: 'Doubt Exchange',
+      label: 'Peer Connect',
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"></path>
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
         </svg>
       ),
     },
@@ -249,16 +294,12 @@ export default function Dashboard({ context }: Props) {
         if (!isInstructor) return null;
         return (
           <div className="dashboard-content-area">
-            <div className="dashboard-page-header">
-              <h1>Add Activity</h1>
-              <p>Create a new activity and link it to this course in Vibe.</p>
-            </div>
             <ActivityCreator
               context={{ ...context, isDeepLinking: false }}
               onSuccess={() => {
                 setActiveSection('activities');
               }}
-              onError={() => {}}
+              onError={() => { }}
             />
           </div>
         );
@@ -290,14 +331,6 @@ export default function Dashboard({ context }: Props) {
       case 'incentives':
         return (
           <div className="dashboard-content-area">
-            <div className="dashboard-page-header" style={{ marginBottom: '1.5rem' }}>
-              <h1>{isInstructor ? 'Manage BP Incentives' : 'BP Incentives'}</h1>
-              <p>
-                {isInstructor
-                  ? 'Write and publish motivational rewards visible to all students in this course.'
-                  : 'View the rewards and incentives your instructor has set for this course.'}
-              </p>
-            </div>
             {isInstructor
               ? <InstructorIncentivesPanel context={context} />
               : <StudentIncentivesView context={context} />}
@@ -305,10 +338,13 @@ export default function Dashboard({ context }: Props) {
         );
 
       case 'doubt':
-        // We'll navigate to the top-level route because the doubt pages have their own layout (Dashboard doesn't wrap them)
-        // Wait, instead of rendering here, let's just trigger a full navigation when they click it.
-        // I will fix `handleNavClick` below.
-        return null;
+        return (
+          <div className="dashboard-content-area">
+            {isInstructor
+              ? <DoubtInstructor context={context} />
+              : <DoubtExchange context={context} />}
+          </div>
+        );
 
       default:
         return null;
@@ -345,50 +381,145 @@ export default function Dashboard({ context }: Props) {
       )}
 
       {/* Sidebar */}
-      <aside className={`dashboard-sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
+      <aside className={`dashboard-sidebar ${sidebarOpen ? 'sidebar-open' : ''} ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         <div className="sidebar-brand">
-          <div className="sidebar-brand-text">
-            <span className="sidebar-brand-name">LTI Dashboard</span>
-          </div>
+          {!sidebarCollapsed && (
+            <div className="sidebar-brand-text">
+              <span className="sidebar-brand-name">LTI Dashboard</span>
+            </div>
+          )}
+          {/* Collapse toggle */}
+          <button
+            className="sidebar-collapse-btn"
+            onClick={() => setSidebarCollapsed(c => !c)}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              {sidebarCollapsed
+                ? <><polyline points="9 18 15 12 9 6" /></>
+                : <><polyline points="15 18 9 12 15 6" /></>}
+            </svg>
+          </button>
         </div>
 
-        <div className="sidebar-role-pill">
-          <span className={`role-badge ${isInstructor ? 'role-instructor' : 'role-student'}`}>
-            {isInstructor ? 'Instructor' : 'Student'}
-          </span>
-        </div>
 
         <nav className="sidebar-nav" aria-label="Dashboard navigation">
-          <div className="sidebar-nav-label">Navigation</div>
+          {/* {!sidebarCollapsed && <div className="sidebar-nav-label">Navigation</div>} */}
           {visibleNavItems.map(item => (
             <button
               key={item.id}
               id={`nav-${item.id}`}
-              className={`sidebar-nav-item ${activeSection === item.id ? 'active' : ''}`}
+              className={`sidebar-nav-item ${activeSection === item.id ? 'active' : ''} ${sidebarCollapsed ? 'collapsed-item' : ''}`}
               onClick={() => handleNavClick(item.id)}
               aria-current={activeSection === item.id ? 'page' : undefined}
+              title={sidebarCollapsed ? item.label : undefined}
             >
               <span className="sidebar-nav-icon">{item.icon}</span>
-              <span className="sidebar-nav-label-text">{item.label}</span>
-              {activeSection === item.id && <span className="sidebar-nav-indicator" />}
-              {/* For students: small "NEW" badge if incentives exist — future enhancement */}
+              {!sidebarCollapsed && <span className="sidebar-nav-label-text">{item.label}</span>}
+              {!sidebarCollapsed && activeSection === item.id && <span className="sidebar-nav-indicator" />}
             </button>
           ))}
         </nav>
 
         <div className="sidebar-footer">
-          <div className="sidebar-course-info">
-            <span className="sidebar-course-label">Course</span>
-            <span className="sidebar-course-name" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', marginTop: '4px' }}>
-              {courseName || 'Course Dashboard'}
+          {/* Role badge above course — always visible even when collapsed */}
+          <div className={`sidebar-role-pill ${sidebarCollapsed ? 'sidebar-role-collapsed' : ''}`}>
+            <span className={`role-badge ${isInstructor ? 'role-instructor' : 'role-student'}`}>
+              {sidebarCollapsed ? (isInstructor ? 'I' : 'S') : (isInstructor ? 'Instructor' : 'Student')}
             </span>
           </div>
+          {!sidebarCollapsed && (
+            <div className="sidebar-course-info">
+              <span className="sidebar-course-label">Course</span>
+              <span className="sidebar-course-name" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', marginTop: '4px' }}>
+                {courseName || 'Course Dashboard'}
+              </span>
+            </div>
+          )}
         </div>
       </aside>
 
       {/* Main content */}
       <main className="dashboard-main">
-        {renderContent()}
+        {/* ── Top Header Bar ── */}
+        <header className="dashboard-topbar">
+          <div className="topbar-module-name">
+            {visibleNavItems.find(i => i.id === activeSection)?.icon && (
+              <span className="topbar-module-icon">
+                {visibleNavItems.find(i => i.id === activeSection)?.icon}
+              </span>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span>{visibleNavItems.find(i => i.id === activeSection)?.label ?? 'Dashboard'}</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-muted)', fontFamily: 'Inter, sans-serif' }}>
+                {activeSection === 'bp' && (isInstructor ? 'Manage Brownie Points for all students.' : 'View your Brownie Points and activity logs.')}
+                {activeSection === 'activities' && (isInstructor ? 'Manage course activities and assignments.' : 'View and submit your assigned activities.')}
+                {activeSection === 'bp_store' && 'Spend your BP to unlock late submissions before the hard deadline closes.'}
+                {activeSection === 'incentives' && (isInstructor ? 'Write and publish motivational rewards visible to all students in this course.' : 'View the rewards and incentives your instructor has set for this course.')}
+                {activeSection === 'doubt' && (isInstructor ? 'Manage student doubt sessions and disputes.' : 'Ask • Help • Earn BP')}
+                {activeSection === 'add_activity' && 'Create a new activity and link it to this course in Vibe.'}
+              </span>
+            </div>
+          </div>
+
+          {/* Notification bell and BP pill */}
+          <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {userBp !== null && (
+              <div style={{ background: '#f59e0b15', border: '1px solid #f59e0b30', color: '#d97706', padding: '6px 14px', borderRadius: 20, fontWeight: 'bold', fontSize: '0.85rem' }}>
+                Your BP: {Number(userBp.toFixed(2))}
+              </div>
+            )}
+            <div style={{ position: 'relative' }}>
+              <button
+                className="topbar-notif-btn"
+                onClick={() => {
+                  setShowNotifPanel(p => !p);
+                  if (!showNotifPanel) markAllNotificationsRead();
+                }}
+                aria-label="Notifications"
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                <span className="topbar-notif-label">Notifications</span>
+                {notifications.filter(n => !n.is_read).length > 0 && (
+                  <span className="topbar-notif-badge">
+                    {notifications.filter(n => !n.is_read).length}
+                  </span>
+                )}
+              </button>
+
+              {showNotifPanel && (
+                <div className="topbar-notif-panel" onClick={e => e.stopPropagation()}>
+                  <div className="notif-panel-header">
+                    <span>Notifications</span>
+                    <button className="notif-panel-close" onClick={() => setShowNotifPanel(false)}>✕</button>
+                  </div>
+                  <div className="notif-panel-body">
+                    {notifications.length === 0 ? (
+                      <div className="notif-empty">No Pending Invites or Notifications</div>
+                    ) : (
+                      notifications.map(n => (
+                        <div key={n._id} className={`notif-item ${n.is_read ? 'read' : 'unread'}`}>
+                          <div className="notif-item-title">{n.title}</div>
+                          <div className="notif-item-msg">{n.message}</div>
+                          <div className="notif-item-time">{new Date(n.created_at).toLocaleString()}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+
+        {/* Page Content */}
+        <div className="dashboard-content-scroll" onClick={() => showNotifPanel && setShowNotifPanel(false)}>
+          {renderContent()}
+        </div>
       </main>
     </div>
   );

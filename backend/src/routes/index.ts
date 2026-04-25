@@ -11,6 +11,7 @@ import { activityController } from '../controllers/activity.controller.js';
 import multer from 'multer';
 import { cloudStorageService } from '../utils/cloud-storage.js';
 import * as doubt from '../controllers/doubt.controller.js';
+import * as notifCtrl from '../controllers/notification.controller.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -455,3 +456,8 @@ router.post('/doubt/disputes/:requestId/refund', doubt.forceRefund);
 router.get('/doubt/analytics/:courseId',         doubt.getAnalytics);
 router.get('/doubt/graph/:courseId',             doubt.getEndorsementGraph);
 
+// ─────────────────────────────────────────────────────────────────
+// SYSTEM NOTIFICATIONS (unified, cross-module)
+// ─────────────────────────────────────────────────────────────────
+router.get('/notifications/:userId/:courseId',         notifCtrl.getNotifications);
+router.patch('/notifications/:userId/:courseId/read',  notifCtrl.markAllRead);

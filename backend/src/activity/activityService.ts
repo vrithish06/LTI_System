@@ -14,6 +14,7 @@ import {
     applyPenalty,
     applyPercentagePenalty,
 } from '../hp/hpService.js';
+import { sysNotify } from '../models/SystemNotification.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Activity CRUD
@@ -251,6 +252,8 @@ export async function submitActivity(params: {
                 `Completed activity: ${activity.title}`,
             );
             ledger_id = (entry._id as any).toString();
+            sysNotify(user_id, course_id, 'bp_awarded', '🍪 BP Earned!',
+                `You earned ${hp_change} BP for completing "${activity.title}"!`).catch(() => {});
         }
     } else if (status === 'LATE') {
         // Grace period: Dual transaction model
@@ -264,6 +267,8 @@ export async function submitActivity(params: {
                 activity_id,
                 `Late submission fee — ${activity.title}`,
             );
+            sysNotify(user_id, course_id, 'activity_penalty', '⏰ Late Submission Penalty',
+                `${gracePenaltyHp} BP deducted as late fee for "${activity.title}"`).catch(() => {});
         }
 
         if (baseReward > 0) {

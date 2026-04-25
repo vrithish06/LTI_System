@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { BrowniePointModel } from '../models/BrowniePoint.js';
 import { bpService } from '../services/bp.service.js';
+import { sysNotify } from '../models/SystemNotification.js';
 
 /**
  * Controller class for handling Brownie Points CRUD operations.
@@ -71,6 +72,13 @@ export class BrowniePointController {
             }
 
             res.json({ success: true, data: updatedRecord });
+
+            // Fire system-wide notification to the student
+            const title = pointDelta > 0 ? '🍪 BP Awarded' : '📉 BP Deducted';
+            const msg = pointDelta > 0
+              ? `${instructorName || 'Your instructor'} awarded you ${pointDelta} BP. Reason: ${reason || 'No reason given'}`
+              : `${instructorName || 'Your instructor'} deducted ${Math.abs(pointDelta)} BP. Reason: ${reason || 'No reason given'}`;
+            sysNotify(studentId, courseId, pointDelta > 0 ? 'bp_awarded' : 'bp_deducted', title, msg).catch(() => {});
             
         } catch (err: any) {
             console.error('[BP Update] Exception updating student record:', err.message);

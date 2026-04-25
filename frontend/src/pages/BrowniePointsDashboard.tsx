@@ -363,10 +363,7 @@ export default function BrowniePointsDashboard({ context }: Props) {
 
       <header className="bp-header">
         <div className="header-content">
-          <div className="header-text">
-            <h1>🍪 Brownie Points</h1>
-            <p>Course <span>{courseName || 'Loading...'}</span></p>
-          </div>
+
           {/* ── Export Buttons ── */}
           <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginLeft: 'auto', flexShrink: 0 }}>
             <a

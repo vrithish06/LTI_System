@@ -40,8 +40,8 @@ export default function DoubtInstructor({ context }: { context: LtiContext }) {
     await axios.put(`/api/doubt/config/${context.courseId}`, { max_bp_per_doubt: maxBP });
     showToast('Config saved!');
   };
-  const forceSettle = async (id: string) => { await axios.post(`/api/doubt/disputes/${id}/settle`, { instructorId: context.userId }); showToast('Settled!'); load(); };
-  const forceRefund  = async (id: string) => { await axios.post(`/api/doubt/disputes/${id}/refund`,  { instructorId: context.userId }); showToast('Refunded!'); load(); };
+  const forceSettle = async (id: string, req: any) => { await axios.post(`/api/doubt/disputes/${id}/settle`, { instructorId: context.userId, instructorName: context.userName }); showToast('Settled!'); load(); };
+  const forceRefund  = async (id: string, req: any) => { await axios.post(`/api/doubt/disputes/${id}/refund`,  { instructorId: context.userId, instructorName: context.userName }); showToast('Refunded!'); load(); };
 
 
   const tabs: { key: Tab; label: string }[] = [
@@ -55,7 +55,7 @@ export default function DoubtInstructor({ context }: { context: LtiContext }) {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '1.5rem' }}>
       {toast && <div className={`toast-notification ${toast.type}`}>{toast.msg}</div>}
-      <h1 style={{ margin: '0 0 1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>🧠 Doubt Exchange — Instructor</h1>
+
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '2px solid var(--border)', paddingBottom: '0.25rem', flexWrap: 'wrap' }}>
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
@@ -141,22 +141,29 @@ export default function DoubtInstructor({ context }: { context: LtiContext }) {
                     <span style={{ fontWeight:700 }}>{d.request?.student_a_name} ↔ {d.request?.student_b_name}</span>
                     <span style={{ marginLeft:8, background:'rgba(139,92,246,0.1)', color:'#8b5cf6', borderRadius:6, padding:'2px 8px', fontSize:'0.75rem', fontWeight:700 }}>{d.request?.topic}</span>
                     <p style={{ margin:'6px 0 0', fontSize:'0.82rem', color:'var(--text-muted)' }}>Flagged: {new Date(d.flagged_at).toLocaleString()}</p>
-                    <p style={{ margin:'4px 0 0', fontSize:'0.82rem' }}>A claims: <strong style={{color:d.claim_a==='happened'?'#10b981':'#ef4444'}}>{d.claim_a}</strong> · B claims: <strong style={{color:d.claim_b==='happened'?'#10b981':'#ef4444'}}>{d.claim_b}</strong></p>
+                    <p style={{ margin:'4px 0 0', fontSize:'0.82rem' }}>
+                      {d.request?.student_a_name} claims: <strong style={{color:d.claim_a==='happened'?'#10b981':'#ef4444'}}>{d.claim_a?.replace('_',' ')}</strong>
+                      {' · '}
+                      {d.request?.student_b_name} claims: <strong style={{color:d.claim_b==='happened'?'#10b981':'#ef4444'}}>{d.claim_b?.replace('_',' ')}</strong>
+                    </p>
                   </div>
                   <span style={{ fontWeight:800, color:'#8b5cf6', fontSize:'1.1rem' }}>🍪 {d.request?.bp_offer} BP</span>
                 </div>
                 <div style={{ marginTop:'1rem', display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.75rem' }}>
                   {(d.proofs||[]).map((p:any) => (
                     <div key={p._id} style={{ background:'var(--bg-secondary)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 12px', fontSize:'0.82rem' }}>
-                      <p style={{ margin:'0 0 4px', fontWeight:700 }}>Party {p.party} says: <span style={{ color:p.claim==='happened'?'#10b981':'#ef4444' }}>{p.claim.replace('_',' ')}</span></p>
+                      <p style={{ margin:'0 0 4px', fontWeight:700 }}>
+                        {p.party === 'A' ? (d.request?.student_a_name || 'Student A') : (d.request?.student_b_name || 'Student B')} says:{' '}
+                        <span style={{ color:p.claim==='happened'?'#10b981':'#ef4444' }}>{p.claim.replace('_',' ')}</span>
+                      </p>
                       {p.proof_file_id ? <a href={`/api/lti/document/${p.proof_file_id}`} target="_blank" rel="noopener noreferrer" style={{ color:'#8b5cf6', fontWeight:600 }}>📎 {p.proof_file_name||'View Proof'}</a> : <span style={{ color:'var(--text-muted)' }}>No file</span>}
                     </div>
                   ))}
                 </div>
                 {!d.resolution && (
                   <div style={{ marginTop:'1rem', display:'flex', gap:'0.75rem' }}>
-                    <button className="btn-primary" onClick={()=>forceSettle(d.request_id)} style={{ flex:1, background:'#10b981' }}>⚡ Force Settle → B gets BP</button>
-                    <button className="btn-primary" onClick={()=>forceRefund(d.request_id)} style={{ flex:1, background:'#ef4444' }}>↩ Force Refund → A refunded</button>
+                    <button className="btn-primary" onClick={()=>forceSettle(d.request_id, d.request)} style={{ flex:1, background:'#10b981' }}>⚡ Force Settle → {d.request?.student_b_name || 'Student B'} gets BP</button>
+                    <button className="btn-primary" onClick={()=>forceRefund(d.request_id, d.request)} style={{ flex:1, background:'#ef4444' }}>↩ Force Refund → {d.request?.student_a_name || 'Student A'} refunded</button>
                   </div>
                 )}
                 {d.resolution && (() => {

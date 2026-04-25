@@ -58,29 +58,7 @@ export default function BPStore({ context, onOpenActivity }: Props) {
 
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto', padding: '24px' }}>
-      <div className="al-header" style={{ marginBottom: '24px' }}>
-        <div className="al-header-left">
-          <div style={{
-            width: 42, height: 42, borderRadius: 10,
-            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', boxShadow: '0 2px 8px rgba(245,158,11,0.3)'
-          }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="9" cy="21" r="1" />
-              <circle cx="20" cy="21" r="1" />
-              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-            </svg>
-          </div>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)' }}>BP Store</h1>
-            <p style={{ margin: '2px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Spend your BP to unlock late submissions before the hard deadline closes.</p>
-          </div>
-        </div>
-        <div style={{ background: '#f59e0b15', border: '1px solid #f59e0b30', color: '#d97706', padding: '8px 16px', borderRadius: 20, fontWeight: 'bold', fontSize: '0.9rem' }}>
-          Your Balance: {Number(userBp.toFixed(2))} BP
-        </div>
-      </div>
+
 
       {loading ? (
         <div className="activities-loading">Loading store...</div>
