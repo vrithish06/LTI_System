@@ -6,8 +6,16 @@ import '../../index.css';
 
 type Tab = 'config' | 'audit' | 'disputes' | 'analytics' | 'graph';
 
-export default function DoubtInstructor({ context }: { context: LtiContext }) {
-  const [tab, setTab] = useState<Tab>('config');
+interface Props {
+  context: LtiContext;
+  activeTab?: string;
+  onTabChange?: (tab: Tab) => void;
+}
+
+export default function DoubtInstructor({ context, activeTab, onTabChange }: Props) {
+  const VALID_TABS: Tab[] = ['config', 'audit', 'disputes', 'analytics', 'graph'];
+  const resolvedTab = (VALID_TABS.includes(activeTab as Tab) ? activeTab : 'config') as Tab;
+  const setTab = (t: Tab) => onTabChange?.(t);
   const [maxBP, setMaxBP] = useState(50);
   const [audit, setAudit] = useState<any[]>([]);
   const [disputes, setDisputes] = useState<any[]>([]);
@@ -15,6 +23,11 @@ export default function DoubtInstructor({ context }: { context: LtiContext }) {
   const [edges, setEdges] = useState<any[]>([]);
   const [disputeTab, setDisputeTab] = useState<'open' | 'resolved'>('open');
   const [expandedAudit, setExpandedAudit] = useState<string | null>(null);
+  const [showMoreLeaderboard, setShowMoreLeaderboard] = useState(false);
+  const [showMoreTopics, setShowMoreTopics] = useState(false);
+  const [auditSearch, setAuditSearch] = useState('');
+  const [auditFilter, setAuditFilter] = useState<'all' | 'suspicious'>('all');
+  const [disputeSearch, setDisputeSearch] = useState('');
   const [toast, setToast] = useState<{ msg: string; type: 'success'|'error'}|null>(null);
 
   const showToast = (msg: string, type: 'success'|'error' = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 4000); };
@@ -55,18 +68,18 @@ export default function DoubtInstructor({ context }: { context: LtiContext }) {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '1.5rem' }}>
       {toast && <div className={`toast-notification ${toast.type}`}>{toast.msg}</div>}
-
+      <h1 style={{ margin: '0 0 1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>🧠 Doubt Exchange — Instructor</h1>
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '2px solid var(--border)', paddingBottom: '0.25rem', flexWrap: 'wrap' }}>
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            style={{ padding: '8px 18px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', background: tab===t.key ? '#8b5cf6' : 'transparent', color: tab===t.key ? '#fff' : 'var(--text-muted)' }}>
+            style={{ padding: '8px 18px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', background: resolvedTab===t.key ? '#8b5cf6' : 'transparent', color: resolvedTab===t.key ? '#fff' : 'var(--text-muted)' }}>
             {t.label}
           </button>
         ))}
       </div>
 
       {/* ── CONFIG ── */}
-      {tab==='config' && (
+      {resolvedTab==='config' && (
         <div className="detail-card" style={{ padding: '1.5rem', maxWidth: 480 }}>
           <h3 style={{ margin:'0 0 1rem', fontWeight:700 }}>Course Configuration</h3>
           <div style={{ display:'flex', flexDirection:'column', gap:'1rem' }}>
@@ -81,12 +94,44 @@ export default function DoubtInstructor({ context }: { context: LtiContext }) {
       )}
 
       {/* ── AUDIT LOG ── */}
-      {tab==='audit' && (
-        <div className="detail-card" style={{ padding: '1.25rem' }}>
-          <h3 style={{ margin:'0 0 1rem', fontWeight:700 }}>Completed Transactions</h3>
-          {audit.length===0 && <p style={{ color:'var(--text-muted)', textAlign:'center', padding:'2rem' }}>No completed transactions yet.</p>}
-          <div style={{ display:'flex', flexDirection:'column', gap:'0.75rem' }}>
-            {audit.map(t => (
+      {resolvedTab==='audit' && (() => {
+        const filteredAudit = audit.filter(t => {
+          if (auditFilter === 'suspicious' && !t.is_suspicious) return false;
+          if (auditSearch) {
+            const q = auditSearch.toLowerCase();
+            return t.from_student_name?.toLowerCase().includes(q) || 
+                   t.to_student_name?.toLowerCase().includes(q) || 
+                   t.topic?.toLowerCase().includes(q);
+          }
+          return true;
+        });
+        return (
+          <div className="detail-card" style={{ padding: '1.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
+              <h3 style={{ margin:0, fontWeight:700 }}>Completed Transactions</h3>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input 
+                  type="text" 
+                  placeholder="Search names or topics..." 
+                  className="acr-input" 
+                  style={{ padding: '6px 12px', fontSize: '0.85rem', width: '200px' }}
+                  value={auditSearch} 
+                  onChange={e => setAuditSearch(e.target.value)} 
+                />
+                <select 
+                  className="acr-input" 
+                  style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+                  value={auditFilter} 
+                  onChange={e => setAuditFilter(e.target.value as any)}
+                >
+                  <option value="all">All</option>
+                  <option value="suspicious">Suspicious Only</option>
+                </select>
+              </div>
+            </div>
+            {filteredAudit.length===0 && <p style={{ color:'var(--text-muted)', textAlign:'center', padding:'2rem' }}>No matching transactions found.</p>}
+            <div style={{ display:'flex', flexDirection:'column', gap:'0.75rem' }}>
+              {filteredAudit.map(t => (
               <div key={t._id} style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px', flexWrap:'wrap', gap:'0.5rem' }}>
                   <div>
@@ -117,24 +162,45 @@ export default function DoubtInstructor({ context }: { context: LtiContext }) {
                   </div>
                 )}
               </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── DISPUTES ── */}
-      {tab==='disputes' && (
-        <div>
-          <div style={{ display:'flex', gap:'0.5rem', marginBottom:'1rem' }}>
-            {(['open','resolved'] as const).map(dt => (
-              <button key={dt} onClick={()=>setDisputeTab(dt)} style={{ padding:'6px 16px', borderRadius:20, border:'1px solid var(--border)', cursor:'pointer', fontWeight:600, fontSize:'0.82rem', background:disputeTab===dt?'#8b5cf6':'var(--bg-card)', color:disputeTab===dt?'#fff':'var(--text-secondary)' }}>
-                {dt.charAt(0).toUpperCase()+dt.slice(1)}
-              </button>
-            ))}
-          </div>
-          {disputes.length===0 && <p style={{ textAlign:'center', color:'var(--text-muted)', padding:'2rem' }}>No {disputeTab} disputes.</p>}
-          <div style={{ display:'flex', flexDirection:'column', gap:'1rem' }}>
-            {disputes.map(d => (
+      {resolvedTab==='disputes' && (() => {
+        const filteredDisputes = disputes.filter(d => {
+          if (disputeSearch) {
+            const q = disputeSearch.toLowerCase();
+            return d.request?.student_a_name?.toLowerCase().includes(q) || 
+                   d.request?.student_b_name?.toLowerCase().includes(q) || 
+                   d.request?.topic?.toLowerCase().includes(q);
+          }
+          return true;
+        });
+        return (
+          <div>
+            <div style={{ display:'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom:'1rem', flexWrap: 'wrap', gap: '1rem' }}>
+              <div style={{ display:'flex', gap:'0.5rem' }}>
+                {(['open','resolved'] as const).map(dt => (
+                  <button key={dt} onClick={()=>setDisputeTab(dt)} style={{ padding:'6px 16px', borderRadius:20, border:'1px solid var(--border)', cursor:'pointer', fontWeight:600, fontSize:'0.82rem', background:disputeTab===dt?'#8b5cf6':'var(--bg-card)', color:disputeTab===dt?'#fff':'var(--text-secondary)' }}>
+                    {dt.charAt(0).toUpperCase()+dt.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <input 
+                type="text" 
+                placeholder="Search students or topics..." 
+                className="acr-input" 
+                style={{ padding: '6px 12px', fontSize: '0.85rem', width: '220px' }}
+                value={disputeSearch} 
+                onChange={e => setDisputeSearch(e.target.value)} 
+              />
+            </div>
+            {filteredDisputes.length===0 && <p style={{ textAlign:'center', color:'var(--text-muted)', padding:'2rem' }}>No matching {disputeTab} disputes.</p>}
+            <div style={{ display:'flex', flexDirection:'column', gap:'1rem' }}>
+              {filteredDisputes.map(d => (
               <div key={d._id} className="detail-card" style={{ padding:'1.25rem' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:'0.75rem' }}>
                   <div>
@@ -204,46 +270,66 @@ export default function DoubtInstructor({ context }: { context: LtiContext }) {
                   );
                 })()}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── ANALYTICS ── */}
-      {tab==='analytics' && analytics && (
-        <div style={{ display:'flex', flexDirection:'column', gap:'1.5rem' }}>
-          <div className="detail-card" style={{ padding:'1.25rem' }}>
-            <h3 style={{ margin:'0 0 1rem', fontWeight:700 }}>🏆 Top Doubt Clearers Leaderboard</h3>
-            {analytics.leaderboard.slice(0,10).map((s:any, i:number) => (
-              <div key={s.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:'0.88rem' }}>
-                <span style={{ fontWeight:600 }}><span style={{ color:'var(--text-muted)', marginRight:8, minWidth:20, display:'inline-block' }}>#{i+1}</span>{s.name}</span>
-                <div style={{ display:'flex', gap:'1.5rem', color:'var(--text-muted)', fontSize:'0.82rem' }}>
-                  <span>Cleared: <strong style={{ color:'#10b981' }}>{s.cleared}</strong></span>
-                  <span>Asked: <strong style={{ color:'#8b5cf6' }}>{s.asked}</strong></span>
-                  <span>Earned: <strong style={{ color:'#f59e0b' }}>🍪 {s.earned}</strong></span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="detail-card" style={{ padding:'1.25rem' }}>
-            <h3 style={{ margin:'0 0 1rem', fontWeight:700 }}>📚 Most Active Topics</h3>
-            <div style={{ display:'flex', flexDirection:'column', gap:'0.5rem' }}>
-              {analytics.topics.map((t:any) => (
-                <div key={t.topic} style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
-                  <span style={{ minWidth:140, fontSize:'0.85rem', fontWeight:600 }}>{t.topic}</span>
-                  <div style={{ flex:1, background:'var(--bg-secondary)', borderRadius:999, height:10, overflow:'hidden' }}>
-                    <div style={{ height:'100%', background:'#8b5cf6', borderRadius:999, width:`${Math.min(100,(t.count/(analytics.topics[0]?.count||1))*100)}%`, transition:'width 0.4s' }} />
-                  </div>
-                  <span style={{ fontSize:'0.82rem', color:'var(--text-muted)', minWidth:30, textAlign:'right' }}>{t.count}</span>
-                </div>
               ))}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {/* ── ANALYTICS ── */}
+      {resolvedTab==='analytics' && analytics && (() => {
+        const displayLeaderboard = showMoreLeaderboard ? analytics.leaderboard : analytics.leaderboard.slice(0, 5);
+        const displayTopics = showMoreTopics ? analytics.topics : analytics.topics.slice(0, 5);
+        
+        return (
+          <div style={{ display:'flex', flexDirection:'column', gap:'1.5rem' }}>
+            <div className="detail-card" style={{ padding:'1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ margin:0, fontWeight:700 }}>🏆 Top Doubt Clearers Leaderboard</h3>
+                {analytics.leaderboard.length > 5 && (
+                  <button onClick={() => setShowMoreLeaderboard(!showMoreLeaderboard)} style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+                    {showMoreLeaderboard ? 'Show Less' : 'Show More'}
+                  </button>
+                )}
+              </div>
+              {displayLeaderboard.map((s:any, i:number) => (
+                <div key={s.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:'0.88rem' }}>
+                  <span style={{ fontWeight:600 }}><span style={{ color:'var(--text-muted)', marginRight:8, minWidth:20, display:'inline-block' }}>#{i+1}</span>{s.name}</span>
+                  <div style={{ display:'flex', gap:'1.5rem', color:'var(--text-muted)', fontSize:'0.82rem' }}>
+                    <span>Cleared: <strong style={{ color:'#10b981' }}>{s.cleared}</strong></span>
+                    <span>Asked: <strong style={{ color:'#8b5cf6' }}>{s.asked}</strong></span>
+                    <span>Earned: <strong style={{ color:'#f59e0b' }}>🍪 {s.earned}</strong></span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="detail-card" style={{ padding:'1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ margin:0, fontWeight:700 }}>📚 Most Active Topics</h3>
+                {analytics.topics.length > 5 && (
+                  <button onClick={() => setShowMoreTopics(!showMoreTopics)} style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+                    {showMoreTopics ? 'Show Less' : 'Show More'}
+                  </button>
+                )}
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:'0.5rem' }}>
+                {displayTopics.map((t:any) => (
+                  <div key={t.topic} style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+                    <span style={{ minWidth:140, fontSize:'0.85rem', fontWeight:600 }}>{t.topic}</span>
+                    <div style={{ flex:1, background:'var(--bg-secondary)', borderRadius:999, height:10, overflow:'hidden' }}>
+                      <div style={{ height:'100%', background:'#8b5cf6', borderRadius:999, width:`${Math.min(100,(t.count/(analytics.topics[0]?.count||1))*100)}%`, transition:'width 0.4s' }} />
+                    </div>
+                    <span style={{ fontSize:'0.82rem', color:'var(--text-muted)', minWidth:30, textAlign:'right' }}>{t.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── GRAPH ── */}
-      {tab==='graph' && (
+      {resolvedTab==='graph' && (
         <div className="detail-card" style={{ padding:'1.25rem' }}>
           <h3 style={{ margin:'0 0 1rem', fontWeight:700 }}>Class Endorsement Network</h3>
           <EndorsementGraph edges={edges} />

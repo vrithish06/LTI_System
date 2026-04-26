@@ -16,8 +16,17 @@ interface Edge { from_student_id: string; from_student_name: string; to_student_
 
 type Tab = 'send' | 'sessions' | 'graph';
 
-export default function DoubtExchange({ context }: { context: LtiContext }) {
-  const [tab, setTab] = useState<Tab>('send');
+interface Props {
+  context: LtiContext;
+  activeTab?: string;
+  onTabChange?: (tab: Tab) => void;
+}
+
+export default function DoubtExchange({ context, activeTab, onTabChange }: Props) {
+  const VALID_TABS: Tab[] = ['send', 'sessions', 'graph'];
+  const resolvedTab = (VALID_TABS.includes(activeTab as Tab) ? activeTab : 'send') as Tab;
+  const setTab = (t: Tab) => onTabChange?.(t);
+
   const [students, setStudents] = useState<Student[]>([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Student | null>(null);
@@ -33,6 +42,7 @@ export default function DoubtExchange({ context }: { context: LtiContext }) {
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [graphMode, setGraphMode] = useState<'personal' | 'full'>('personal');
+  const [sessionFilter, setSessionFilter] = useState<'all' | 'pending' | 'active' | 'resolved' | 'cancelled'>('all');
   const [proofModal, setProofModal] = useState<{ requestId: string; party: 'A' | 'B' } | null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [claim, setClaim] = useState<'happened' | 'not_happened' | null>(null);
@@ -153,14 +163,14 @@ export default function DoubtExchange({ context }: { context: LtiContext }) {
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '2px solid var(--border)', paddingBottom: '0.25rem' }}>
         {(['send', 'sessions', 'graph'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            style={{ padding: '8px 18px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', background: tab === t ? '#8b5cf6' : 'transparent', color: tab === t ? '#fff' : 'var(--text-muted)', transition: 'all 0.15s' }}>
+            style={{ padding: '8px 18px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', background: resolvedTab === t ? '#8b5cf6' : 'transparent', color: resolvedTab === t ? '#fff' : 'var(--text-muted)', transition: 'all 0.15s' }}>
             {t === 'send' ? '📤 Send Request' : t === 'sessions' ? `📋 My Sessions ${requests.length ? `(${requests.length})` : ''}` : '🕸️ Network Graph'}
           </button>
         ))}
       </div>
 
       {/* ── SEND REQUEST ── */}
-      {tab === 'send' && (
+      {resolvedTab === 'send' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
           <div className="detail-card" style={{ padding: '1.25rem' }}>
             <h3 style={{ margin: '0 0 1rem', fontWeight: 700 }}>Find a Student</h3>
@@ -211,10 +221,23 @@ export default function DoubtExchange({ context }: { context: LtiContext }) {
       )}
 
       {/* ── MY SESSIONS ── */}
-      {tab === 'sessions' && (
+      {resolvedTab === 'sessions' && (() => {
+        const filteredRequests = requests.filter(r => sessionFilter === 'all' || r.status === sessionFilter);
+        return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {requests.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No sessions yet.</p>}
-          {requests.map(r => {
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {(['all', 'pending', 'active', 'resolved', 'cancelled'] as const).map(f => (
+              <button 
+                key={f} 
+                onClick={() => setSessionFilter(f)} 
+                style={{ padding: '6px 16px', borderRadius: 20, border: '1px solid var(--border)', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', background: sessionFilter === f ? '#8b5cf6' : 'var(--bg-card)', color: sessionFilter === f ? '#fff' : 'var(--text-secondary)' }}
+              >
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
+          {filteredRequests.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No {sessionFilter === 'all' ? '' : sessionFilter} sessions yet.</p>}
+          {filteredRequests.map(r => {
             const isA = r.student_a_id === context.userId;
             const party = isA ? 'A' : 'B';
             const iHaveSubmitted = !!r.proofs?.find(p => p.party === party);
@@ -273,10 +296,11 @@ export default function DoubtExchange({ context }: { context: LtiContext }) {
             );
           })}
         </div>
-      )}
+        );
+      })()}
 
       {/* ── NETWORK GRAPH ── */}
-      {tab === 'graph' && (
+      {resolvedTab === 'graph' && (
         <div className="detail-card" style={{ padding: '1.25rem' }}>
           <h3 style={{ margin: '0 0 1rem', fontWeight: 700 }}>Class Endorsement Network</h3>
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>

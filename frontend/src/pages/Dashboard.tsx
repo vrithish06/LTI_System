@@ -26,26 +26,54 @@ const VALID_SECTIONS: Section[] = ['bp', 'add_activity', 'activities', 'incentiv
 //             /lti/<section>/<actId>   e.g. /lti/activities/act_abc123
 // The ?lti_token=... query param is always preserved.
 
-function parsePath(): { section: Section | null; activityId: string | null } {
+function parsePath(): { section: Section | null; activityId: string | null; subTab: string | null } {
   const parts = window.location.pathname.replace(/^\//, '').split('/');
-  // parts[0] = 'lti', parts[1] = section, parts[2] = activityId
+  // parts[0] = 'lti', parts[1] = section, parts[2] = activityId OR sub-tab
   const section = parts[1] as Section;
-  const activityId = parts[2] || null;
+  const second  = parts[2] || null;
+  const third   = parts[3] || null;
+  
+  let subTab = null;
+  let activityId = null;
+
+  if (section === 'doubt') {
+    if (second === 'instructor') {
+      subTab = third || null;
+    } else {
+      subTab = second || null;
+    }
+  } else {
+    activityId = second || null;
+  }
+
   return {
     section: VALID_SECTIONS.includes(section) ? section : null,
     activityId,
+    subTab,
   };
 }
 
-function buildUrl(section: Section, activityId?: string) {
-  const base = activityId ? `/lti/${section}/${activityId}` : `/lti/${section}`;
-  // Only preserve the lti_token param — drop mode= and other launch params
+function buildUrl(section: Section, activityId?: string, subTab?: string) {
+  let base: string;
+  if (section === 'doubt' && subTab) {
+    base = `/lti/doubt/${subTab}`;
+  } else if (activityId) {
+    base = `/lti/${section}/${activityId}`;
+  } else {
+    base = `/lti/${section}`;
+  }
   const token = new URLSearchParams(window.location.search).get('lti_token');
   return token ? `${base}?lti_token=${token}` : base;
 }
 
 function navigateTo(section: Section, activityId?: string) {
   window.history.pushState({ section, activityId: activityId ?? null }, '', buildUrl(section, activityId));
+}
+
+function navigateToDoubtTab(pathSuffix: string, tabState: string) {
+  const token = new URLSearchParams(window.location.search).get('lti_token');
+  const url = `/lti/doubt/${pathSuffix}${token ? `?lti_token=${token}` : ''}`;
+  window.history.pushState({ section: 'doubt', subTab: tabState }, '', url);
 }
 
 function replaceTo(section: Section, activityId?: string) {
@@ -57,12 +85,17 @@ export default function Dashboard({ context }: Props) {
   const defaultSection: Section = isInstructor ? 'bp' : 'activities';
 
   const getInitialState = () => {
-    const { section, activityId } = parsePath();
-    return { section: section || defaultSection, activityId };
+    const { section, activityId, subTab } = parsePath();
+    return {
+      section: section || defaultSection,
+      activityId: activityId || null,
+      subTab: subTab || null,
+    };
   };
 
-  const [activeSection, setActiveSection] = useState<Section>(() => getInitialState().section);
+  const [activeSection, setActiveSection] = useState<Section>(getInitialState().section);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(() => getInitialState().activityId);
+  const [doubtSubTab, setDoubtSubTab] = useState<string>(getInitialState().subTab || '');
   const [selectedActivity, setSelectedActivity] = useState<ActivityRecord | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -151,9 +184,10 @@ export default function Dashboard({ context }: Props) {
   // Listen to browser back/forward button
   useEffect(() => {
     const onPop = () => {
-      const { section, activityId } = parsePath();
+      const { section, activityId, subTab } = parsePath();
       const resolved = section || defaultSection;
       setActiveSection(resolved);
+      setDoubtSubTab(subTab || '');
       if (activityId) {
         setSelectedActivityId(activityId);
       } else {
@@ -341,8 +375,8 @@ export default function Dashboard({ context }: Props) {
         return (
           <div className="dashboard-content-area">
             {isInstructor
-              ? <DoubtInstructor context={context} />
-              : <DoubtExchange context={context} />}
+              ? <DoubtInstructor context={context} activeTab={doubtSubTab} onTabChange={(t) => { setDoubtSubTab(t); navigateToDoubtTab(`instructor/${t}`, t); }} />
+              : <DoubtExchange   context={context} activeTab={doubtSubTab} onTabChange={(t) => { setDoubtSubTab(t); navigateToDoubtTab(t, t); }} />}
           </div>
         );
 
