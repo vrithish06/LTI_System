@@ -8,6 +8,8 @@ import {
     deleteActivity,
 } from '../activity/activityService.js';
 import { getHpBalance } from '../hp/hpService.js';
+import { sysNotify } from '../models/SystemNotification.js';
+import { BrowniePointModel } from '../models/BrowniePoint.js';
 
 /**
  * Controller that exposes activity management and submission REST APIs.
@@ -123,6 +125,18 @@ export class ActivityController {
             }
 
             res.status(201).json({ success: true, data: activity, JWT });
+
+            // Notify all enrolled students about the new activity (fire-and-forget)
+            BrowniePointModel.find({ courseId }, { studentId: 1, _id: 0 }).lean().then(async (students) => {
+                const notifTitle = '📋 New Activity Assigned';
+                const notifMsg = `A new activity "${title}" has been assigned in your course.`;
+                await Promise.all(
+                    students.map((s: any) =>
+                        sysNotify(s.studentId, courseId, 'general', notifTitle, notifMsg).catch(() => {})
+                    )
+                );
+                console.log(`[Activity Notify] Notified ${students.length} student(s) about "${title}"`);
+            }).catch(() => {});
 
             // Auto-trigger milestone backfill in the background for VIBE_MILESTONE activities.
             // This immediately awards BP to any students who already have enough progress,
