@@ -12,14 +12,15 @@ import { InstructorIncentivesPanel, StudentIncentivesView } from './CourseIncent
 import DoubtExchange from './doubt/DoubtExchange';
 import DoubtInstructor from './doubt/DoubtInstructor';
 import type { ActivityRecord } from './ActivitiesTypes';
+import StudentHome from './StudentHome';
 import '../index.css';
 
 interface Props {
   context: LtiContext;
 }
 
-type Section = 'bp' | 'add_activity' | 'activities' | 'incentives' | 'bp_store' | 'doubt';
-const VALID_SECTIONS: Section[] = ['bp', 'add_activity', 'activities', 'incentives', 'bp_store', 'doubt'];
+type Section = 'home' | 'bp' | 'add_activity' | 'activities' | 'incentives' | 'bp_store' | 'doubt';
+const VALID_SECTIONS: Section[] = ['home', 'bp', 'add_activity', 'activities', 'incentives', 'bp_store', 'doubt'];
 
 // ── Path-based routing helpers ──────────────────────────────────────
 // URL shape:  /lti/<section>           e.g. /lti/activities
@@ -82,7 +83,7 @@ function replaceTo(section: Section, activityId?: string) {
 
 export default function Dashboard({ context }: Props) {
   const isInstructor = context.role === 'Instructor';
-  const defaultSection: Section = isInstructor ? 'bp' : 'activities';
+  const defaultSection: Section = isInstructor ? 'bp' : 'home';
 
   const getInitialState = () => {
     const { section, activityId, subTab } = parsePath();
@@ -222,6 +223,17 @@ export default function Dashboard({ context }: Props) {
 
   const navItems: { id: Section; label: string; icon: JSX.Element; teacherOnly?: boolean; studentOnly?: boolean }[] = [
     {
+      id: 'home',
+      label: 'Home',
+      studentOnly: true,
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          <polyline points="9 22 9 12 15 12 15 22" />
+        </svg>
+      ),
+    },
+    {
       id: 'bp',
       label: isInstructor ? 'Manage BP' : 'My BP',
       icon: (
@@ -319,6 +331,16 @@ export default function Dashboard({ context }: Props) {
     }
 
     switch (activeSection) {
+      case 'home':
+        return (
+          <div className="dashboard-content-area">
+            <StudentHome
+              context={context}
+              onNavigate={(s) => handleNavClick(s as Section)}
+              userBp={userBp}
+            />
+          </div>
+        );
       case 'bp':
         return isInstructor
           ? <BrowniePointsDashboard context={context} />
@@ -401,8 +423,7 @@ export default function Dashboard({ context }: Props) {
           </svg>
         </button>
         <div className="dashboard-mobile-title">
-          <span className="lti-badge">LTI</span>
-          <span>Dashboard</span>
+          <span style={{ fontWeight: 900, fontSize: '1.1rem', color: '#d97706', letterSpacing: '-0.02em' }}>Course<span style={{ color: '#1a1a1a' }}>XP</span></span>
         </div>
       </div>
 
@@ -419,7 +440,7 @@ export default function Dashboard({ context }: Props) {
         <div className="sidebar-brand">
           {!sidebarCollapsed && (
             <div className="sidebar-brand-text">
-              <span className="sidebar-brand-name">LTI Dashboard</span>
+              <span className="sidebar-brand-name" style={{ fontWeight: 900, fontSize: '1.15rem', letterSpacing: '-0.02em', color: '#d97706' }}>Course<span style={{ color: '#1a1a1a' }}>XP</span></span>
             </div>
           )}
           {/* Collapse toggle */}
@@ -487,6 +508,7 @@ export default function Dashboard({ context }: Props) {
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span>{visibleNavItems.find(i => i.id === activeSection)?.label ?? 'Dashboard'}</span>
               <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-muted)', fontFamily: 'Inter, sans-serif' }}>
+                {activeSection === 'home' && 'Your personal dashboard — explore features, track progress, and get started.'}
                 {activeSection === 'bp' && (isInstructor ? 'Manage Brownie Points for all students.' : 'View your Brownie Points and activity logs.')}
                 {activeSection === 'activities' && (isInstructor ? 'Manage course activities and assignments.' : 'View and submit your assigned activities.')}
                 {activeSection === 'bp_store' && 'Spend your BP to unlock late submissions before the hard deadline closes.'}
