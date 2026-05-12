@@ -521,6 +521,16 @@ export default function Dashboard({ context }: Props) {
 
           {/* Notification bell and BP pill */}
           <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <a 
+              href={window.location.origin.replace('5174', '5173') + (isInstructor ? '/teacher/courses/enrollments' : '/student/learn')} 
+              style={{ textDecoration: 'none', background: 'var(--bg-secondary)', color: 'var(--text-main)', padding: '6px 14px', borderRadius: 20, fontWeight: 600, fontSize: '0.85rem', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+              Return to LMS
+            </a>
+
             {userBp !== null && (
               <div style={{ background: '#f59e0b15', border: '1px solid #f59e0b30', color: '#d97706', padding: '6px 14px', borderRadius: 20, fontWeight: 'bold', fontSize: '0.85rem' }}>
                 Your BP: {Number(userBp.toFixed(2))}

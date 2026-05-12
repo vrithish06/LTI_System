@@ -154,7 +154,7 @@ export default function DoubtExchange({ context, activeTab, onTabChange }: Props
       {/* Incoming requests badge */}
       {incoming.length > 0 && (
         <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, padding: '12px 16px', marginBottom: '1.25rem', fontSize: '0.85rem', fontWeight: 600, color: '#92400e' }}>
-          ⏳ You have {incoming.length} pending doubt request{incoming.length > 1 ? 's' : ''} waiting for your response.
+          You have {incoming.length} pending doubt request{incoming.length > 1 ? 's' : ''} waiting for your response.
           <button onClick={() => setTab('sessions')} style={{ marginLeft: 12, background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>View</button>
         </div>
       )}
@@ -164,7 +164,7 @@ export default function DoubtExchange({ context, activeTab, onTabChange }: Props
         {(['send', 'sessions', 'graph'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
             style={{ padding: '8px 18px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', background: resolvedTab === t ? '#8b5cf6' : 'transparent', color: resolvedTab === t ? '#fff' : 'var(--text-muted)', transition: 'all 0.15s' }}>
-            {t === 'send' ? '📤 Send Request' : t === 'sessions' ? `📋 My Sessions ${requests.length ? `(${requests.length})` : ''}` : '🕸️ Network Graph'}
+            {t === 'send' ? 'Send Request' : t === 'sessions' ? `My Sessions ${requests.length ? `(${requests.length})` : ''}` : 'Network Graph'}
           </button>
         ))}
       </div>
@@ -185,7 +185,7 @@ export default function DoubtExchange({ context, activeTab, onTabChange }: Props
                       <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 1 }}>{s.studentEmail}</div>
                     )}
                   </div>
-                  <span style={{ fontSize: '0.78rem', color: '#8b5cf6', fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>🍪 {s.points.toFixed(1)}</span>
+                  <span style={{ fontSize: '0.78rem', color: '#8b5cf6', fontWeight: 700, background: 'rgba(139,92,246,0.1)', padding: '2px 6px', borderRadius: 6 }}>{s.points.toFixed(1)} BP</span>
                 </div>
               ))}
               {filtered.length === 0 && <p style={{ color: 'var(--text-muted)', textAlign: 'center', fontSize: '0.85rem' }}>No students found.</p>}
@@ -210,10 +210,10 @@ export default function DoubtExchange({ context, activeTab, onTabChange }: Props
                     const raw = e.target.value.replace(/^0+/, '') || '0';
                     setBpOffer(parseInt(raw, 10) || 0);
                   }} />
-                {bpOffer > myBP && <p style={{ color: '#ef4444', fontSize: '0.78rem', margin: '4px 0 0' }}>⚠ Insufficient balance</p>}
+                {bpOffer > myBP && <p style={{ color: '#ef4444', fontSize: '0.78rem', margin: '4px 0 0' }}>Insufficient balance</p>}
               </div>
               <button className="btn-primary" onClick={sendRequest} disabled={submitting || !selected || !topic.trim()} style={{ marginTop: '0.5rem' }}>
-                {submitting ? 'Sending…' : `🚀 Send Request`}
+                {submitting ? 'Sending…' : `Send Request`}
               </button>
             </div>
           </div>
@@ -253,7 +253,7 @@ export default function DoubtExchange({ context, activeTab, onTabChange }: Props
                     <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.82rem' }}>{r.description}</p>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
-                    <span style={{ fontWeight: 700, color: '#8b5cf6' }}>🍪 {r.bp_offer} BP</span>
+                    <span style={{ fontWeight: 700, color: '#8b5cf6' }}>{r.bp_offer} BP</span>
                     <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: r.status === 'resolved' ? '#10b98120' : r.status === 'disputed' ? '#ef444420' : r.status === 'active' ? '#3b82f620' : '#f59e0b20', color: r.status === 'resolved' ? '#10b981' : r.status === 'disputed' ? '#ef4444' : r.status === 'active' ? '#3b82f6' : '#f59e0b' }}>
                       {r.status.replace('_', ' ').toUpperCase()}
                     </span>
@@ -263,29 +263,29 @@ export default function DoubtExchange({ context, activeTab, onTabChange }: Props
                 {/* B's accept/reject for pending */}
                 {!isA && r.status === 'pending' && (
                   <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem' }}>
-                    <button className="btn-primary" onClick={() => handleAccept(r._id)} style={{ flex: 1 }}>✓ Accept</button>
-                    <button className="btn-secondary" onClick={() => handleReject(r._id)} style={{ flex: 1 }}>✕ Reject</button>
+                    <button className="btn-primary" onClick={() => handleAccept(r._id)} style={{ flex: 1 }}>Accept</button>
+                    <button className="btn-secondary" onClick={() => handleReject(r._id)} style={{ flex: 1 }}>Reject</button>
                   </div>
                 )}
 
                 {/* Resolution phase for active/proof_pending */}
                 {['active', 'proof_pending'].includes(r.status) && !iHaveSubmitted && (
                   <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--bg-secondary)', borderRadius: 10 }}>
-                    <p style={{ margin: '0 0 0.75rem', fontWeight: 700, fontSize: '0.88rem' }}>📋 Submit your claim for this session:</p>
+                    <p style={{ margin: '0 0 0.75rem', fontWeight: 700, fontSize: '0.88rem' }}>Submit your claim for this session:</p>
                     <div style={{ display: 'flex', gap: '0.75rem' }}>
                       <button onClick={() => openProofModal(r._id, party, 'happened')}
                         className="btn-primary" style={{ flex: 1, fontSize: '0.85rem' }}>
-                        ✅ Meeting Happened
+                        Meeting Happened
                       </button>
                       <button onClick={() => openProofModal(r._id, party, 'not_happened')}
                         style={{ flex: 1, fontSize: '0.85rem', padding: '0.65rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', cursor: 'pointer', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                        ❌ Meeting Did Not Happen
+                        Meeting Did Not Happen
                       </button>
                     </div>
                   </div>
                 )}
                 {['active', 'proof_pending'].includes(r.status) && iHaveSubmitted && (
-                  <p style={{ marginTop: '0.75rem', fontSize: '0.82rem', color: '#10b981', fontWeight: 600 }}>✓ Your claim submitted. Waiting for the other party…</p>
+                  <p style={{ marginTop: '0.75rem', fontSize: '0.82rem', color: '#10b981', fontWeight: 600 }}>Your claim submitted. Waiting for the other party…</p>
                 )}
                 {r.auto_resolve_at && ['active', 'proof_pending'].includes(r.status) && (
                   <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>

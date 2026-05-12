@@ -58,17 +58,17 @@ export default function DoubtInstructor({ context, activeTab, onTabChange }: Pro
 
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'config', label: '⚙️ Config' },
-    { key: 'audit', label: '📜 Audit Log' },
-    { key: 'disputes', label: `⚖️ Disputes ${disputes.filter(d=>!d.resolution).length ? `(${disputes.filter(d=>!d.resolution).length})` : ''}` },
-    { key: 'analytics', label: '📊 Analytics' },
-    { key: 'graph', label: '🕸️ Network' },
+    { key: 'config', label: 'Config' },
+    { key: 'audit', label: 'Audit Log' },
+    { key: 'disputes', label: `Disputes ${disputes.filter(d=>!d.resolution).length ? `(${disputes.filter(d=>!d.resolution).length})` : ''}` },
+    { key: 'analytics', label: 'Analytics' },
+    { key: 'graph', label: 'Network' },
   ];
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '1.5rem' }}>
       {toast && <div className={`toast-notification ${toast.type}`}>{toast.msg}</div>}
-      <h1 style={{ margin: '0 0 1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>🧠 Doubt Exchange — Instructor</h1>
+      <h1 style={{ margin: '0 0 1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>Doubt Exchange — Instructor</h1>
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '2px solid var(--border)', paddingBottom: '0.25rem', flexWrap: 'wrap' }}>
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
@@ -139,9 +139,9 @@ export default function DoubtInstructor({ context, activeTab, onTabChange }: Pro
                     <span style={{ marginLeft:8, fontSize:'0.75rem', color:'var(--text-muted)' }}>{t.topic}</span>
                   </div>
                   <div style={{ display:'flex', gap:'0.5rem', alignItems:'center' }}>
-                    <span style={{ fontWeight:700, color:'#8b5cf6' }}>🍪 {t.bp_amount} BP</span>
+                    <span style={{ fontWeight:700, color:'#8b5cf6' }}>{t.bp_amount} BP</span>
                     <span style={{ fontSize:'0.72rem', color:'var(--text-muted)' }}>{new Date(t.resolved_at).toLocaleDateString()}</span>
-                    {t.is_suspicious && <span style={{ background:'#ef444420', color:'#ef4444', borderRadius:6, padding:'2px 8px', fontSize:'0.72rem', fontWeight:700 }}>🚩 Suspicious</span>}
+                    {t.is_suspicious && <span style={{ background:'#ef444420', color:'#ef4444', borderRadius:6, padding:'2px 8px', fontSize:'0.72rem', fontWeight:700 }}>Suspicious</span>}
                     <button onClick={()=>setExpandedAudit(expandedAudit===t.request_id?null:t.request_id)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:6, padding:'3px 10px', cursor:'pointer', fontSize:'0.75rem' }}>
                       {expandedAudit===t.request_id ? 'Hide' : 'Proofs'}
                     </button>
@@ -154,7 +154,7 @@ export default function DoubtInstructor({ context, activeTab, onTabChange }: Pro
                       <div key={p._id} style={{ background:'#fff', border:'1px solid var(--border)', borderRadius:8, padding:'10px 12px', fontSize:'0.82rem' }}>
                         <p style={{ margin:'0 0 4px', fontWeight:700 }}>Party {p.party} — <span style={{ color: p.claim==='happened'?'#10b981':'#ef4444' }}>{p.claim.replace('_',' ')}</span></p>
                         {p.proof_file_id ? (
-                          <a href={`/api/lti/document/${p.proof_file_id}`} target="_blank" rel="noopener noreferrer" style={{ color:'#8b5cf6', fontWeight:600 }}>📎 View Proof: {p.proof_file_name}</a>
+                          <a href={`/api/lti/document/${p.proof_file_id}`} target="_blank" rel="noopener noreferrer" style={{ color:'#8b5cf6', fontWeight:600 }}>View Proof: {p.proof_file_name}</a>
                         ) : <span style={{ color:'var(--text-muted)' }}>No file uploaded</span>}
                       </div>
                     ))}
@@ -213,7 +213,7 @@ export default function DoubtInstructor({ context, activeTab, onTabChange }: Pro
                       {d.request?.student_b_name} claims: <strong style={{color:d.claim_b==='happened'?'#10b981':'#ef4444'}}>{d.claim_b?.replace('_',' ')}</strong>
                     </p>
                   </div>
-                  <span style={{ fontWeight:800, color:'#8b5cf6', fontSize:'1.1rem' }}>🍪 {d.request?.bp_offer} BP</span>
+                  <span style={{ fontWeight:800, color:'#8b5cf6', fontSize:'1.1rem' }}>{d.request?.bp_offer} BP</span>
                 </div>
                 <div style={{ marginTop:'1rem', display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.75rem' }}>
                   {(d.proofs||[]).map((p:any) => (
@@ -222,14 +222,14 @@ export default function DoubtInstructor({ context, activeTab, onTabChange }: Pro
                         {p.party === 'A' ? (d.request?.student_a_name || 'Student A') : (d.request?.student_b_name || 'Student B')} says:{' '}
                         <span style={{ color:p.claim==='happened'?'#10b981':'#ef4444' }}>{p.claim.replace('_',' ')}</span>
                       </p>
-                      {p.proof_file_id ? <a href={`/api/lti/document/${p.proof_file_id}`} target="_blank" rel="noopener noreferrer" style={{ color:'#8b5cf6', fontWeight:600 }}>📎 {p.proof_file_name||'View Proof'}</a> : <span style={{ color:'var(--text-muted)' }}>No file</span>}
+                      {p.proof_file_id ? <a href={`/api/lti/document/${p.proof_file_id}`} target="_blank" rel="noopener noreferrer" style={{ color:'#8b5cf6', fontWeight:600 }}>{p.proof_file_name||'View Proof'}</a> : <span style={{ color:'var(--text-muted)' }}>No file</span>}
                     </div>
                   ))}
                 </div>
                 {!d.resolution && (
                   <div style={{ marginTop:'1rem', display:'flex', gap:'0.75rem' }}>
-                    <button className="btn-primary" onClick={()=>forceSettle(d.request_id, d.request)} style={{ flex:1, background:'#10b981' }}>⚡ Force Settle → {d.request?.student_b_name || 'Student B'} gets BP</button>
-                    <button className="btn-primary" onClick={()=>forceRefund(d.request_id, d.request)} style={{ flex:1, background:'#ef4444' }}>↩ Force Refund → {d.request?.student_a_name || 'Student A'} refunded</button>
+                    <button className="btn-primary" onClick={()=>forceSettle(d.request_id, d.request)} style={{ flex:1, background:'#10b981' }}>Force Settle → {d.request?.student_b_name || 'Student B'} gets BP</button>
+                    <button className="btn-primary" onClick={()=>forceRefund(d.request_id, d.request)} style={{ flex:1, background:'#ef4444' }}>Force Refund → {d.request?.student_a_name || 'Student A'} refunded</button>
                   </div>
                 )}
                 {d.resolution && (() => {
@@ -253,11 +253,11 @@ export default function DoubtInstructor({ context, activeTab, onTabChange }: Pro
                       </p>
                       <div style={{ display:'flex', gap:'0.75rem', flexWrap:'wrap' }}>
                         <span style={{ background:'#10b98120', color:'#10b981', borderRadius:8, padding:'4px 12px', fontSize:'0.8rem', fontWeight:700 }}>
-                          🍪 BP went to: {bpWentTo}
+                          BP went to: {bpWentTo}
                         </span>
                         {guiltyName && (
                           <span style={{ background:'#ef444420', color:'#ef4444', borderRadius:8, padding:'4px 12px', fontSize:'0.8rem', fontWeight:700 }}>
-                            🚩 False claim by: {guiltyName} (−10% BP penalty)
+                            False claim by: {guiltyName} (−10% BP penalty)
                           </span>
                         )}
                         {!guiltyName && (
@@ -285,7 +285,7 @@ export default function DoubtInstructor({ context, activeTab, onTabChange }: Pro
           <div style={{ display:'flex', flexDirection:'column', gap:'1.5rem' }}>
             <div className="detail-card" style={{ padding:'1.25rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ margin:0, fontWeight:700 }}>🏆 Top Doubt Clearers Leaderboard</h3>
+                <h3 style={{ margin:0, fontWeight:700 }}>Top Doubt Clearers Leaderboard</h3>
                 {analytics.leaderboard.length > 5 && (
                   <button onClick={() => setShowMoreLeaderboard(!showMoreLeaderboard)} style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
                     {showMoreLeaderboard ? 'Show Less' : 'Show More'}
@@ -298,14 +298,14 @@ export default function DoubtInstructor({ context, activeTab, onTabChange }: Pro
                   <div style={{ display:'flex', gap:'1.5rem', color:'var(--text-muted)', fontSize:'0.82rem' }}>
                     <span>Cleared: <strong style={{ color:'#10b981' }}>{s.cleared}</strong></span>
                     <span>Asked: <strong style={{ color:'#8b5cf6' }}>{s.asked}</strong></span>
-                    <span>Earned: <strong style={{ color:'#f59e0b' }}>🍪 {s.earned}</strong></span>
+                    <span>Earned: <strong style={{ color:'#f59e0b' }}>{s.earned} BP</strong></span>
                   </div>
                 </div>
               ))}
             </div>
             <div className="detail-card" style={{ padding:'1.25rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ margin:0, fontWeight:700 }}>📚 Most Active Topics</h3>
+                <h3 style={{ margin:0, fontWeight:700 }}>Most Active Topics</h3>
                 {analytics.topics.length > 5 && (
                   <button onClick={() => setShowMoreTopics(!showMoreTopics)} style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
                     {showMoreTopics ? 'Show Less' : 'Show More'}
