@@ -496,7 +496,7 @@ export default function StudentHome({ context, onNavigate, userBp }: Props) {
         }}
       >
         <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: 20, opacity: 0.9 }}>
-          💡 How ViBe Works
+          💡 How CodeXP Works
         </h3>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {[
